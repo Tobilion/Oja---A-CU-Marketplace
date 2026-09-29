@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, Listing } from '../../types';
 import { ListingCard } from '../marketplace/ListingCard';
+import { formatHallName } from '../../utils/formatHall';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
@@ -174,7 +175,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 pt-1 text-[11px]">
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-[var(--color-brand-primary)]" />
-                      {user.hallId.replace('hall_', '').toUpperCase()} Hall{isSelf && user.roomNumber ? ` · Room ${user.roomNumber}` : ''}
+                      {formatHallName(user.hallId)}{isSelf && user.roomNumber ? ` · Room ${user.roomNumber}` : ''}
                     </span>
                     <span className="flex items-center gap-1">
                       <Send className="w-3 h-3 text-sky-500" />

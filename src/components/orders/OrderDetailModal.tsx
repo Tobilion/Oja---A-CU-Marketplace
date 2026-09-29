@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Order, SubOrder, OrderState } from '../../types';
 import { formatNaira } from '../../utils/money';
+import { formatHallName } from '../../utils/formatHall';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
@@ -136,7 +137,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               </span>
             </div>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              Destination: {order.deliveryHallId.replace('hall_', '').toUpperCase()} · Room {order.deliveryRoom}
+              Destination: {formatHallName(order.deliveryHallId)} · Room {order.deliveryRoom}
             </p>
           </div>
           <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">

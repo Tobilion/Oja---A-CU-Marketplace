@@ -8,6 +8,7 @@ import { X, Trash2, ShoppingBag, ArrowRight, Package, CheckCircle2, Clock, Chevr
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatNaira } from '../../utils/money';
+import { formatHallName } from '../../utils/formatHall';
 import { Order } from '../../types';
 import { repo } from '../../data';
 
@@ -189,7 +190,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       {feeBreakdownResult.sellerBreakdowns.map((sb, i) => (
                         <div key={i} className="flex justify-between items-center">
                           <span>
-                            Seller {i + 1} ({sb.sellerHallId.replace('hall_', '').toUpperCase()})
+                            Seller {i + 1} ({formatHallName(sb.sellerHallId, undefined, 'short')})
                             {sb.qualifiesForHallDiscount && (
                               <span className="text-[var(--color-brand-primary)] font-semibold ml-1">(-50% same hall)</span>
                             )}
@@ -243,7 +244,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       </span>
                     </div>
                     <div className="flex justify-between items-baseline text-[var(--color-text-muted)]">
-                      <span>{ord.subOrders.length} sub-order(s) · {ord.deliveryHallId.replace('hall_', '').toUpperCase()}</span>
+                      <span>{ord.subOrders.length} sub-order(s) · {formatHallName(ord.deliveryHallId)}</span>
                       <span className="font-mono font-bold text-[var(--color-text-main)]">{formatNaira(ord.totalAmount)}</span>
                     </div>
                     <div className="text-[11px] text-[var(--color-brand-primary)] flex items-center gap-1 pt-1 font-medium">

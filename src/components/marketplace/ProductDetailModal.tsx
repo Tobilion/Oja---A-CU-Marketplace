@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Listing, UserProfile, Review, Business } from '../../types';
 import { formatNaira } from '../../utils/money';
+import { formatHallName } from '../../utils/formatHall';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
@@ -99,7 +100,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] font-medium">
             <span>{listing.condition}</span>
             <span aria-hidden="true">·</span>
-            <span>{seller?.hallId.replace('hall_', '').toUpperCase()} Hall</span>
+            <span>{formatHallName(seller?.hallId)}</span>
             {isVerified && (
               <>
                 <span aria-hidden="true">·</span>
@@ -199,7 +200,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <span>★ {seller?.ratingAverage.toFixed(1) || '5.0'}</span>
                     <span>({seller?.ratingCount || 0} reviews)</span>
                     <span>·</span>
-                    <span>{seller?.hallId.replace('hall_', '').toUpperCase()}</span>
+                    <span>{formatHallName(seller?.hallId)}</span>
                   </p>
                 </div>
               </div>

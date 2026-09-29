@@ -7,6 +7,7 @@ import React from 'react';
 import { ShoppingBag, CheckCircle2, ShieldCheck, MapPin } from 'lucide-react';
 import { Listing, UserProfile } from '../../types';
 import { formatNaira } from '../../utils/money';
+import { formatHallName } from '../../utils/formatHall';
 import { useCart } from '../../context/CartContext';
 
 interface ListingCardProps {
@@ -76,7 +77,7 @@ export const ListingCard: React.FC<ListingCardProps> = ({
             <span aria-hidden="true">·</span>
             <span className="flex items-center gap-0.5">
               <MapPin className="w-2.5 h-2.5" />
-              {seller?.hallId.replace('hall_', '').toUpperCase() || 'CU'}
+              {seller ? formatHallName(seller.hallId, undefined, 'short') : 'CU'}
             </span>
             {isVerified && (
               <>

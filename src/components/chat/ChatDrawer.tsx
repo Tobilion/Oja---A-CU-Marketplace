@@ -21,6 +21,7 @@ import { repo } from '../../data';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { formatNaira } from '../../utils/money';
+import { formatHallName } from '../../utils/formatHall';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -103,7 +104,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               status: referencedOrder.status,
               deliveryMode: referencedOrder.deliveryMode,
               buyerName: currentUser.fullName,
-              buyerHall: currentUser.hallId.replace('hall_', '').toUpperCase(),
+              buyerHall: formatHallName(currentUser.hallId, undefined, 'short'),
             }
           : undefined,
       });
@@ -196,7 +197,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               </button>
               {otherUser && (
                 <span className="text-[11px] text-[var(--color-text-muted)] font-mono">
-                  @{otherUser.username} ({otherUser.hallId.replace('hall_', '').toUpperCase()})
+                  @{otherUser.username} ({formatHallName(otherUser.hallId, undefined, 'short')})
                 </span>
               )}
             </div>

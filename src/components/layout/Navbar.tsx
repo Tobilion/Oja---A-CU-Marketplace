@@ -22,6 +22,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { IS_DEMO_MODE } from '../../config/appConfig';
+import { formatHallName } from '../../utils/formatHall';
 
 interface NavbarProps {
   onOpenCart: () => void;
@@ -255,9 +256,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="px-4 py-2 border-b border-[var(--color-border)]">
                     <p className="text-sm font-semibold text-[var(--color-text-main)] truncate">{currentUser.fullName}</p>
                     <p className="text-xs text-[var(--color-text-muted)]">@{currentUser.username}</p>
-                    <p className="text-[11px] font-mono text-[var(--color-brand-primary)] mt-0.5">
-                      {currentUser.hallId.replace('hall_', '').toUpperCase()} · {currentUser.roomNumber}
-                    </p>
+                      <p className="text-[11px] font-mono text-[var(--color-brand-primary)] mt-0.5">
+                        {formatHallName(currentUser.hallId)} · {currentUser.roomNumber}
+                      </p>
                   </div>
 
                   <div className="py-1 text-xs">

@@ -24,6 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { Order, UserProfile, Business, Report, AuditLogEntry, Hall, Listing } from '../../types';
 import { formatNaira } from '../../utils/money';
+import { formatHallName } from '../../utils/formatHall';
 import { useNotifications } from '../../context/NotificationContext';
 
 interface AdminDashboardProps {
@@ -614,7 +615,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       ))}
                     </div>
                     <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                      {u.schoolEmail} · {u.hallId.replace('hall_', '').toUpperCase()} Hall ({u.roomNumber})
+                      {u.schoolEmail} · {formatHallName(u.hallId)} ({u.roomNumber})
                     </p>
                   </div>
 
