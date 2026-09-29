@@ -157,7 +157,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <h2 className="text-base font-bold text-[var(--color-text-main)]">
-            {mode === 'signin' ? 'Sign In to Ọjà' : mode === 'signup' ? 'Create Student Account' : 'Verify Email Code'}
+            {mode === 'signin' ? 'Sign In to Oja' : mode === 'signup' ? 'Create Student Account' : 'Verify Email Code'}
           </h2>
           <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />

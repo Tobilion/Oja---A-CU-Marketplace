@@ -219,11 +219,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       />
                       <div>
                         <div className="font-bold text-[var(--color-text-main)] flex items-center gap-1.5">
-                          <span>Pay Ọjà (Recommended Escrow Protection)</span>
+                          <span>Pay Oja (Recommended Escrow Protection)</span>
                           <Lock className="w-3.5 h-3.5 text-emerald-600" />
                         </div>
                         <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                          Transfer to Ọjà operations account. Your money is protected and only released to the seller after you confirm delivery with your 4-digit code.
+                          Transfer to Oja operations account. Your money is protected and only released to the seller after you confirm delivery with your 4-digit code.
                         </p>
                       </div>
                     </div>
@@ -288,10 +288,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 space-y-2">
                   <div className="flex items-center gap-1.5 font-bold text-xs">
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    <span>Not Protected by Ọjà Escrow</span>
+                    <span>Not Protected by Oja Escrow</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    By choosing this option, Ọjà does not hold the funds. If the seller fails to deliver or provides a damaged item, Ọjà cannot refund your transfer.
+                    By choosing this option, Oja does not hold the funds. If the seller fails to deliver or provides a damaged item, Oja cannot refund your transfer.
                   </p>
                   <label className="flex items-center gap-2 cursor-pointer pt-1 font-semibold text-xs">
                     <input
@@ -309,7 +309,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               {paymentMode === 'pay_oja' && (
                 <div className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] space-y-3">
                   <span className="font-semibold text-[var(--color-text-main)] uppercase tracking-wider text-[10px]">
-                    Ọjà Escrow Bank Account
+                    Oja Escrow Bank Account
                   </span>
                   <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
                     <div>
@@ -322,7 +322,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </div>
                     <div className="col-span-2 pt-1 border-t border-[var(--color-border)]">
                       <p className="text-[10px] text-[var(--color-text-muted)]">Account Name</p>
-                      <p className="font-semibold text-[var(--color-text-main)]">Ọjà Escrow Operations</p>
+                      <p className="font-semibold text-[var(--color-text-main)]">Oja Escrow Operations</p>
                     </div>
                   </div>
 
@@ -403,7 +403,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <span>Payment Mode</span>
                     <span className="font-semibold text-[var(--color-text-main)]">
                       {paymentMode === 'pay_oja'
-                        ? 'Pay Ọjà Escrow'
+                        ? 'Pay Oja Escrow'
                         : paymentMode === 'pay_on_delivery'
                         ? 'Pay on Delivery'
                         : 'Pay Seller Directly'}

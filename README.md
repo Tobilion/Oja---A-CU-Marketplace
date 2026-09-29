@@ -1,8 +1,8 @@
-# Ọjà — Covenant University Campus Marketplace
+# Oja — Covenant University Campus Marketplace
 
 > "Campus trade, kept honest."
 
-Ọjà is a verified student marketplace built for students of Covenant University, Nigeria. It provides escrow-protected payments, verified student seller profiles, Amazon-style student business storefronts, and room deliveries by vetted hall runners.
+Oja is a verified student marketplace built for students of Covenant University, Nigeria. It provides escrow-protected payments, verified student seller profiles, Amazon-style student business storefronts, and room deliveries by vetted hall runners.
 
 ---
 
@@ -14,7 +14,7 @@
 - **Data Layer:** Swappable Repository pattern (`src/data/repo.ts`):
   - `MockRepository` (`src/data/mockRepo.ts`): Preloaded with 43 realistic student listings, 12+ profiles across all Covenant halls, verified sellers, businesses, orders, reviews, and audit logs. Operates fully offline in `localStorage`.
   - `SupabaseRepository` (`src/data/supabaseRepo.ts`): Production PostgreSQL integration with Row-Level Security (RLS) policies, atomic stock decrementing, and database triggers.
-  - Automatic fallback: If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not set, Ọjà runs in Demo Mode with a role switcher.
+  - Automatic fallback: If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are not set, Oja runs in Demo Mode with a role switcher.
 
 ---
 
@@ -60,7 +60,7 @@ All money is stored and calculated in integer Naira (₦).
 - Unit tests verify boundary cases: `npx tsx src/utils/deliveryFee.test.ts`.
 
 ### Payment Options
-1. **Pay Ọjà (Protected Escrow):** Funds are transferred to the Ọjà operations account and held until the buyer enters their 4-digit delivery handover code.
+1. **Pay Oja (Protected Escrow):** Funds are transferred to the Oja operations account and held until the buyer enters their 4-digit delivery handover code.
 2. **Pay on Delivery/Pickup:** Item is physically inspected at handover before payment.
 3. **Pay Seller Directly:** Available only for Verified Sellers, accompanied by an explicit warning and mandatory buyer acknowledgment.
 

@@ -26,7 +26,7 @@ export const TrustStrip: React.FC = () => {
               <Lock className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-[var(--color-text-main)]">Ọjà Protected Escrow</h4>
+              <h4 className="text-xs font-semibold text-[var(--color-text-main)]">Oja Protected Escrow</h4>
               <p className="text-[11px] text-[var(--color-text-muted)]">Funds held safely until parcel is confirmed</p>
             </div>
           </div>

@@ -130,7 +130,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }}
             className="font-display font-extrabold text-2xl tracking-tight text-[var(--color-text-main)] flex items-center gap-1.5"
           >
-            <span className="text-[var(--color-brand-primary)]">Ọjà</span>
+            <span className="text-[var(--color-brand-primary)]">Oja</span>
             <span className="text-xs font-mono font-normal tracking-normal text-[var(--color-text-muted)] hidden sm:inline">
               Covenant
             </span>
@@ -170,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[var(--color-brand-primary)] rounded-lg hover:opacity-90 transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sell on Ọjà</span>
+            <span className="hidden sm:inline">Sell on Oja</span>
             <span className="sm:hidden">Sell</span>
           </button>
 

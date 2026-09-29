@@ -235,7 +235,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {isSelf && !user.isSellerApproved && (
             <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 flex items-center justify-between">
               <div>
-                <p className="font-bold text-xs">Become an Ọjà Campus Seller</p>
+                <p className="font-bold text-xs">Become an Oja Campus Seller</p>
                 <p className="text-[11px] opacity-80 mt-0.5">
                   {user.sellerApplicationStatus === 'pending'
                     ? 'Your seller application with bank details is currently under admin consideration.'

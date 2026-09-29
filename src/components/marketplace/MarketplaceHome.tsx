@@ -147,7 +147,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
       <footer className="mt-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] py-8 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[var(--color-text-muted)]">
           <div>
-            <span className="font-display font-extrabold text-sm text-[var(--color-text-main)] mr-2">Ọjà</span>
+            <span className="font-display font-extrabold text-sm text-[var(--color-text-main)] mr-2">Oja</span>
             <span>Campus trade, kept honest · Covenant University, Ota</span>
           </div>
           <div className="flex items-center gap-4 font-mono text-[11px]">

@@ -189,7 +189,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-[var(--color-brand-primary)]" />
-            <h2 className="text-base font-bold text-[var(--color-text-main)]">Ọjà Admin Operations Cockpit</h2>
+            <h2 className="text-base font-bold text-[var(--color-text-main)]">Oja Admin Operations Cockpit</h2>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-semibold">
               {currentUser?.adminLevel?.replace(/_/g, ' ').toUpperCase() || 'SUPER ADMIN'}
             </span>
@@ -362,7 +362,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] space-y-3">
                 <h3 className="font-bold text-[var(--color-text-main)]">Operational Guidelines</h3>
                 <p className="text-[var(--color-text-muted)] leading-relaxed">
-                  Always verify bank transfer references against incoming bank alerts on the official Ọjà Kuda account before approving orders. Sellers receive payouts only after buyer confirms package delivery with their 4-digit code.
+                  Always verify bank transfer references against incoming bank alerts on the official Oja Kuda account before approving orders. Sellers receive payouts only after buyer confirms package delivery with their 4-digit code.
                 </p>
               </div>
             </div>
