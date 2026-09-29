@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Layers,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -47,14 +48,25 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateBusiness,
   onOpenAuth,
 }) => {
-  const { currentUser, allUsers, switchUser, isMock } = useAuth();
+  const { currentUser, allUsers, switchUser, isMock, signOut } = useAuth();
   const { mode, isYorubaTheme, toggleMode, toggleYorubaTheme } = useTheme();
-  const { totalItemCount } = useCart();
+  const { totalItemCount, clearCart } = useCart();
   const { unreadCount } = useNotifications();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
 
   const isAdmin = currentUser?.adminLevel != null || currentUser?.badges.includes('Admin');
+
+  // BUG-1: logout clears the session, the persisted cart, and every open
+  // overlay (App listens for oja:logout), and never re-authenticates: the
+  // persona bar only switches when explicitly picked.
+  const handleLogout = async () => {
+    setShowUserMenu(false);
+    setShowRoleSwitcher(false);
+    await signOut();
+    clearCart();
+    window.dispatchEvent(new Event('oja:logout'));
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-[var(--color-surface)]/95 backdrop-blur-md border-b border-[var(--color-border)] transition-colors">
@@ -154,7 +166,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Post Listing Button */}
           <button
-            onClick={currentUser?.isSellerApproved ? onOpenCreateListing : onOpenSellerApply}
+            onClick={currentUser ? (currentUser.isSellerApproved ? onOpenCreateListing : onOpenSellerApply) : onOpenAuth}
             className="px-3.5 py-1.5 text-xs font-semibold text-white bg-[var(--color-brand-primary)] rounded-lg hover:opacity-90 transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -298,6 +310,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                         Admin Operations
                       </button>
                     )}
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-red-600 dark:text-red-400 font-medium flex items-center gap-2 border-t border-[var(--color-border)] mt-1 pt-2.5"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Log out
+                    </button>
                   </div>
                 </div>
               )}

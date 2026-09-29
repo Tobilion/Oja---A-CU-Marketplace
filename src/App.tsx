@@ -124,6 +124,30 @@ function AppContent() {
     return () => clearInterval(timer);
   }, []);
 
+  // BUG-1: logout from anywhere (Navbar menu, another tab) closes every open
+  // modal and drawer so no signed-in view lingers for a guest.
+  useEffect(() => {
+    const closeAllOverlays = () => {
+      setSelectedListing(null);
+      setSelectedProfileUserId(null);
+      setSelectedBusinessId(null);
+      setSelectedOrder(null);
+      setIsCartOpen(false);
+      setIsCheckoutOpen(false);
+      setIsChatOpen(false);
+      setIsNotificationsOpen(false);
+      setIsCreateListingOpen(false);
+      setIsCreateBusinessOpen(false);
+      setIsSellerApplyOpen(false);
+      setIsRecycleBinOpen(false);
+      setIsAdminOpen(false);
+      setIsAuthOpen(false);
+      setReviewTarget(null);
+    };
+    window.addEventListener('oja:logout', closeAllOverlays);
+    return () => window.removeEventListener('oja:logout', closeAllOverlays);
+  }, []);
+
   const sellerMap: Record<string, UserProfile> = {};
   for (const u of allUsers) {
     sellerMap[u.id] = u;
@@ -236,7 +260,15 @@ function AppContent() {
       <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        onProceedToCheckout={() => setIsCheckoutOpen(true)}
+        onProceedToCheckout={() => {
+          // BUG-1 guest view: browsing works, but checkout needs an account.
+          if (!currentUser) {
+            setIsCartOpen(false);
+            setIsAuthOpen(true);
+            return;
+          }
+          setIsCheckoutOpen(true);
+        }}
         onViewOrder={(ord) => setSelectedOrder(ord)}
       />
 

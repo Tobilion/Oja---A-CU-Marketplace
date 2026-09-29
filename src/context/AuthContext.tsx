@@ -47,6 +47,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadData();
   }, [loadData]);
 
+  // BUG-1: keep open tabs in sync. A logout in another tab changes the
+  // persisted session key, so reload auth state here instead of staying
+  // signed in with a stale user.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.endsWith('current_user_id')) {
+        loadData();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [loadData]);
+
   const switchUser = async (userId: string) => {
     const user = await repo.switchUser(userId);
     if (user) {

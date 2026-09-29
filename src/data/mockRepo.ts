@@ -25,7 +25,7 @@ import {
   Category,
   BankDetails,
 } from '../types';
-import { MockStorage } from './mockStorage';
+import { MockStorage, pickCurrentUser } from './mockStorage';
 import { calculateOrderDeliveryFee, calculateLatePenalty } from '../utils/deliveryFee';
 import { VALID_ORDER_TRANSITIONS, validateOrderTransition, deriveOrderActorRole } from '../utils/transitions';
 
@@ -34,9 +34,9 @@ export class MockRepository implements Repository {
 
   // --- Auth & Profiles ---
   async getCurrentUser(): Promise<UserProfile | null> {
+    // BUG-1: never fall back to users[0]; a stored logout stays logged out.
     const id = MockStorage.getCurrentUserId();
-    const users = MockStorage.getUsers();
-    return users.find((u) => u.id === id) || users[0] || null;
+    return pickCurrentUser(id, MockStorage.getUsers());
   }
 
   async switchUser(userId: string): Promise<UserProfile | null> {
@@ -228,7 +228,9 @@ export class MockRepository implements Repository {
   }
 
   async signOut(): Promise<void> {
-    MockStorage.setCurrentUserId('');
+    // BUG-1: persist an explicit logged-out state (survives refresh) and
+    // never restore a persona until one is picked. Double-click safe.
+    MockStorage.setCurrentUserId(null);
   }
 
   // --- Listings ---
