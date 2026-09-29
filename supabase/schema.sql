@@ -770,10 +770,29 @@ BEGIN
     ELSIF p_next_state = 'cancelled' THEN
         IF v_actor.admin_level IS NOT NULL AND v_actor.admin_level NOT IN ('super_admin', 'moderator') THEN
             RAISE EXCEPTION 'Only a Moderator or Super Admin can cancel active orders.';
+        ELSIF v_actor.admin_level IS NULL THEN
+            -- Parity with transitions.ts: strangers are rejected; buyers may
+            -- only cancel while still awaiting payment; sellers may reject
+            -- their own sub-orders from the legal states above.
+            SELECT o.buyer_id INTO v_buyer_id FROM public.orders o WHERE o.id = p_order_id;
+            IF v_actor.id IS DISTINCT FROM v_buyer_id
+               AND v_actor.id IS DISTINCT FROM v_sub_order.seller_id
+               AND v_actor.id IS DISTINCT FROM v_sub_order.agent_id THEN
+                RAISE EXCEPTION 'Only parties to the order can cancel it.';
+            ELSIF v_actor.id IS NOT DISTINCT FROM v_buyer_id AND v_sub_order.status != 'awaiting_payment' THEN
+                RAISE EXCEPTION 'Buyers cannot unilaterally cancel after payment is confirmed.';
+            END IF;
         END IF;
     ELSIF p_next_state = 'disputed' THEN
         IF v_actor.admin_level IS NOT NULL AND v_actor.admin_level NOT IN ('super_admin', 'moderator') THEN
             RAISE EXCEPTION 'Only parties to the order or moderators can dispute an order.';
+        ELSIF v_actor.admin_level IS NULL THEN
+            SELECT o.buyer_id INTO v_buyer_id FROM public.orders o WHERE o.id = p_order_id;
+            IF v_actor.id IS DISTINCT FROM v_buyer_id
+               AND v_actor.id IS DISTINCT FROM v_sub_order.seller_id
+               AND v_actor.id IS DISTINCT FROM v_sub_order.agent_id THEN
+                RAISE EXCEPTION 'Only parties to the order or moderators can dispute an order.';
+            END IF;
         END IF;
     END IF;
 

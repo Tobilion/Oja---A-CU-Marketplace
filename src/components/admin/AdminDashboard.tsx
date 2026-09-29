@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
-import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge, FeedbackItem } from '../../types';
+import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge, FeedbackItem, AppSettings } from '../../types';
 import { AdminUserUpdates } from '../../data';
 import { useListQuery } from '../../hooks/useListQuery';
 import { ListControls } from '../common/ListControls';
@@ -45,7 +45,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const { showToast } = useNotifications();
 
   const [activeTab, setActiveTab] = useState<
-    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit' | 'deliveries' | 'agents' | 'feedback'
+    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit' | 'deliveries' | 'agents' | 'feedback' | 'settings'
   >('today');
 
   // 5.4 role-scoped portals. A moderator sees moderation queues, a payment
@@ -81,19 +81,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState({ ojaBankName: '', ojaAccountNumber: '', ojaAccountName: '', deliveryPromiseHours: '48', latePenaltyRatePercent: '5', lateThresholdDaysAlert: '2' });
   const [newHallName, setNewHallName] = useState('');
   const [newHallGender, setNewHallGender] = useState<'male' | 'female'>('male');
   const [isProcessing, setIsProcessing] = useState(false);
   const modalRef = useModalEscape(true, onClose);
 
   const loadData = async () => {
-    const [ords, bizs, reps, logs, hls, fbs] = await Promise.all([
+    const [ords, bizs, reps, logs, hls, fbs, sts] = await Promise.all([
       repo.getAllOrders(),
       repo.getBusinesses(),
       repo.getReports(),
       repo.getAuditLogs(),
       repo.getHalls(),
       repo.getFeedbacks().catch(() => [] as FeedbackItem[]),
+      repo.getSettings().catch(() => null),
     ]);
     setOrders(ords);
     setBusinesses(bizs);
@@ -101,6 +104,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAuditLogs(logs);
     setHalls(hls);
     setFeedbacks(fbs);
+    if (sts) {
+      setSettings(sts);
+      setSettingsDraft({
+        ojaBankName: sts.ojaBankName,
+        ojaAccountNumber: sts.ojaAccountNumber,
+        ojaAccountName: sts.ojaAccountName,
+        deliveryPromiseHours: String(sts.deliveryPromiseHours),
+        latePenaltyRatePercent: String(sts.latePenaltyRatePercent),
+        lateThresholdDaysAlert: String(sts.lateThresholdDaysAlert),
+      });
+    }
   };
 
   useEffect(() => {
@@ -199,6 +213,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'users', label: () => `Users (${allUsers.length})` },
     { id: 'feedback', label: () => `Feedback (${newFeedbacks.length})` },
     { id: 'halls', label: () => `Halls (${halls.length})` },
+    { id: 'settings', label: () => 'Settings' },
     { id: 'audit', label: () => 'Audit Log' },
   ];
 
@@ -586,8 +601,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await loadData();
   };
 
-  const handleAddHall = async (e: React.FormEvent) => {
+  // Late-penalty scale and escrow bank details are admin-editable settings
+  // (Super admin only), not hard-coded. Defaults: 5%/day, N200 floor, 50% cap.
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!amSuper) {
+      showToast('Only a Super admin can change settings.', 'error');
+      return;
+    }
+    const promiseHours = parseInt(settingsDraft.deliveryPromiseHours, 10);
+    const penaltyRate = parseInt(settingsDraft.latePenaltyRatePercent, 10);
+    const alertDays = parseInt(settingsDraft.lateThresholdDaysAlert, 10);
+    if (!promiseHours || promiseHours <= 0 || !(penaltyRate >= 0) || penaltyRate > 50 || !alertDays || alertDays <= 0) {
+      showToast('Enter a valid promise window, a 0–50% penalty rate, and alert days.', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const updated = await repo.updateSettings({
+        ojaBankName: settingsDraft.ojaBankName.trim(),
+        ojaAccountNumber: settingsDraft.ojaAccountNumber.trim(),
+        ojaAccountName: settingsDraft.ojaAccountName.trim(),
+        deliveryPromiseHours: promiseHours,
+        latePenaltyRatePercent: penaltyRate,
+        lateThresholdDaysAlert: alertDays,
+      });
+      await repo.logAdminAction({
+        adminId: currentUser?.id || 'admin',
+        adminEmail: currentUser?.personalEmail || 'admin@oja.cu',
+        action: 'SETTINGS_UPDATED',
+        targetType: 'SETTINGS',
+        targetId: 'app_settings',
+        details: `Bank ${updated.ojaBankName} ${updated.ojaAccountNumber}; promise ${updated.deliveryPromiseHours}h; penalty ${updated.latePenaltyRatePercent}%/day; alert ${updated.lateThresholdDaysAlert}d`,
+      });
+      showToast('Settings saved.', 'success');
+      await loadData();
+      onRefreshData();
+    } catch (err: any) {
+      showToast(err?.message || 'Settings save failed', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAddHall = async (e: React.FormEvent) => {    e.preventDefault();
     if (!amSuper) {
       showToast('Only a Super admin can manage halls.', 'error');
       return;
@@ -1494,6 +1551,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ))
               )}
             </div>
+          )}
+
+          {/* 9b. SETTINGS (Super admin only) */}
+          {activeTab === 'settings' && canSee('settings') && (
+            <form onSubmit={handleSaveSettings} className="space-y-3 max-w-lg">
+              <h3 className="font-bold text-[var(--color-text-main)]">Escrow Bank Account</h3>
+              {(
+                [
+                  ['ojaBankName', 'Bank name'],
+                  ['ojaAccountNumber', 'Account number'],
+                  ['ojaAccountName', 'Account name'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="block text-[11px] text-[var(--color-text-muted)]">
+                  {label}
+                  <input
+                    value={settingsDraft[key]}
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                    required
+                    className="mt-0.5 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-xs text-[var(--color-text-main)]"
+                  />
+                </label>
+              ))}
+              <h3 className="font-bold text-[var(--color-text-main)] pt-1">Delivery Promise & Late Penalties</h3>
+              {(
+                [
+                  ['deliveryPromiseHours', 'Delivery promise window (hours)'],
+                  ['latePenaltyRatePercent', 'Late penalty rate (% per day, 0–50)'],
+                  ['lateThresholdDaysAlert', 'Late alert threshold (days)'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="block text-[11px] text-[var(--color-text-muted)]">
+                  {label}
+                  <input
+                    type="number"
+                    min={key === 'latePenaltyRatePercent' ? 0 : 1}
+                    max={key === 'latePenaltyRatePercent' ? 50 : undefined}
+                    value={settingsDraft[key]}
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                    required
+                    className="mt-0.5 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-xs font-mono text-[var(--color-text-main)]"
+                  />
+                </label>
+              ))}
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                Penalty = days late × max(N200, 5%-of-subtotal daily) capped at 50% of subtotal, using the rate above.
+              </p>
+              <button
+                type="submit"
+                disabled={isProcessing}
+                className="px-4 py-2 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold disabled:opacity-50"
+              >
+                Save Settings
+              </button>
+            </form>
           )}
 
           {/* 9. HALLS MANAGEMENT */}

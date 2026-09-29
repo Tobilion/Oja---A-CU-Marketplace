@@ -861,6 +861,9 @@ export class SupabaseRepository implements Repository {
     if (updates.ojaBankName) payload.oja_bank_name = updates.ojaBankName;
     if (updates.ojaAccountNumber) payload.oja_account_number = updates.ojaAccountNumber;
     if (updates.ojaAccountName) payload.oja_account_name = updates.ojaAccountName;
+    if (updates.deliveryPromiseHours !== undefined) payload.delivery_promise_hours = updates.deliveryPromiseHours;
+    if (updates.latePenaltyRatePercent !== undefined) payload.late_penalty_rate_percent = updates.latePenaltyRatePercent;
+    if (updates.lateThresholdDaysAlert !== undefined) payload.late_threshold_days_alert = updates.lateThresholdDaysAlert;
     const { data, error } = await this.client.from('app_settings').update(payload).eq('id', 1).select().single();
     if (error) throw error;
     return this.getSettings();
