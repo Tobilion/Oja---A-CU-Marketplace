@@ -45,7 +45,66 @@ export class SupabaseRepository implements Repository {
   async getCurrentUser(): Promise<UserProfile | null> {
     const { data: { user }, error: authError } = await this.client.auth.getUser();
     if (authError || !user) return null;
-    const { data, error } = await this.client.from('profiles').select('*').eq('id', user.id).single();
+    let profile = await this.getOwnProfile(user.id);
+    if (!profile) {
+      // First login (e.g. Google OAuth return): no trigger creates the row
+      // from auth.users, so create a placeholder profile the user can edit.
+      profile = await this.createProfileFromAuthUser(user as any);
+      if (!profile) return null;
+    }
+    // Founding bootstrap, idempotent and safe to run on every load: the RPC
+    // only acts on the two founding emails, and email_confirmed_at proves
+    // verification (Google or confirmed email session).
+    const email = (user.email || '').toLowerCase();
+    if (user.email_confirmed_at) {
+      const { FOUNDING_SUPER_ADMIN_EMAILS } = await import('../config/appConfig');
+      if (FOUNDING_SUPER_ADMIN_EMAILS.some((f) => f.toLowerCase() === email)) {
+        await this.client.rpc('bootstrap_admin', { user_email: user.email, user_id: user.id });
+        profile = (await this.getOwnProfile(user.id)) || profile;
+      }
+    }
+    return profile;
+  }
+
+  private async getOwnProfile(id: string): Promise<UserProfile | null> {
+    const { data, error } = await this.client.from('profiles').select('*').eq('id', id).single();
+    if (error || !data) return null;
+    return this.mapProfile(data);
+  }
+
+  private async createProfileFromAuthUser(authUser: {
+    id: string;
+    email?: string;
+    user_metadata?: Record<string, any>;
+  }): Promise<UserProfile | null> {
+    const email = (authUser.email || '').trim().toLowerCase();
+    if (!email) return null;
+    const isStu = email.endsWith('@stu.cu.edu.ng');
+    const { FOUNDING_SUPER_ADMIN_EMAILS } = await import('../config/appConfig');
+    const isFounding = FOUNDING_SUPER_ADMIN_EMAILS.some((f) => f.toLowerCase() === email);
+    // Defense in depth alongside the Auth Hook: never materialize a profile
+    // for an out-of-domain, non-founding Google identity.
+    if (!isStu && !isFounding) return null;
+    const metaName =
+      (authUser.user_metadata && (authUser.user_metadata.full_name || authUser.user_metadata.name)) || '';
+    const baseUsername = (email.split('@')[0] || 'student').replace(/[^a-zA-Z0-9_]/g, '_');
+    const row = {
+      id: authUser.id,
+      full_name: metaName || 'CU Student',
+      username: baseUsername,
+      school_email: isStu ? email : email,
+      personal_email: isStu ? null : email,
+      hall_id: null,
+      room_number: '',
+      gender: 'male',
+      telegram_handle: '',
+    };
+    let { data, error } = await this.client.from('profiles').insert(row).select().single();
+    if (error && (error as any).code === '23505') {
+      // Username taken: retry once with a suffix.
+      row.username = `${baseUsername}_${authUser.id.slice(0, 4)}`;
+      ({ data, error } = await this.client.from('profiles').insert(row).select().single());
+    }
     if (error || !data) return null;
     return this.mapProfile(data);
   }

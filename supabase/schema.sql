@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     rating_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT school_email_domain_check CHECK (school_email LIKE '%@stu.cu.edu.ng')
+    CONSTRAINT school_email_domain_check CHECK (school_email LIKE '%@stu.cu.edu.ng' OR LOWER(school_email) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng'))
 );
 
 -- Businesses
