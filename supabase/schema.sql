@@ -934,3 +934,125 @@ DROP TRIGGER IF EXISTS trg_validate_review_eligibility ON public.reviews;
 CREATE TRIGGER trg_validate_review_eligibility
 BEFORE INSERT ON public.reviews
 FOR EACH ROW EXECUTE FUNCTION public.validate_review_eligibility();
+
+-- 10. PHASE-3 SCHEDULED SWEEPS (Supabase mode; demo mode uses MockRepository
+-- runScheduledSweeps on app start + every 5 minutes instead).
+-- Manual step: enable the pg_cron extension once (Dashboard > Database >
+-- Extensions > cron), then run this section. Each job is unscheduled first so
+-- re-running the section never creates duplicates. Read-only reviewed here,
+-- NOT executed (no live Supabase in this session).
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- 10.1 Auto-confirm deliveries 48h after handover, with late penalties
+CREATE OR REPLACE FUNCTION public.sweep_auto_confirm()
+RETURNS INTEGER AS $$
+DECLARE
+    r RECORD;
+    v_count INTEGER := 0;
+BEGIN
+    FOR r IN
+        SELECT id, subtotal, seller_accepted_at, delivery_time_agreed_hours
+        FROM public.sub_orders
+        WHERE status = 'delivered' AND delivered_at < now() - INTERVAL '48 hours'
+    LOOP
+        UPDATE public.sub_orders
+        SET status = 'completed',
+            completed_at = COALESCE(completed_at, now()),
+            status_timeline = status_timeline || jsonb_build_object('state', 'completed', 'timestamp', now(), 'note', 'Order auto-completed after 48h delivery window expired. Seller payout unlocked.'),
+            updated_at = now()
+        WHERE id = r.id;
+        IF r.seller_accepted_at IS NOT NULL AND r.delivery_time_agreed_hours IS NOT NULL THEN
+            PERFORM public.apply_late_penalty(
+                r.id,
+                EXTRACT(EPOCH FROM (now() - r.seller_accepted_at)) / 3600 - r.delivery_time_agreed_hours
+            );
+        END IF;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 10.2 Purge recycle bin after 30 days
+CREATE OR REPLACE FUNCTION public.sweep_purge_recycle_bin()
+RETURNS INTEGER AS $$
+DECLARE
+    v_count INTEGER := 0;
+BEGIN
+    DELETE FROM public.listings
+    WHERE status = 'in_recycle_bin' AND recycled_at < now() - INTERVAL '30 days';
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 10.3 Backstop: apply late penalties to completed sub-orders missing them
+CREATE OR REPLACE FUNCTION public.sweep_late_penalties()
+RETURNS INTEGER AS $$
+DECLARE
+    r RECORD;
+    v_count INTEGER := 0;
+BEGIN
+    FOR r IN
+        SELECT id, seller_accepted_at, delivery_time_agreed_hours, completed_at
+        FROM public.sub_orders
+        WHERE status = 'completed' AND penalty_amount = 0
+          AND seller_accepted_at IS NOT NULL AND delivery_time_agreed_hours IS NOT NULL
+          AND completed_at IS NOT NULL
+          AND EXTRACT(EPOCH FROM (completed_at - seller_accepted_at)) / 3600 > delivery_time_agreed_hours
+    LOOP
+        PERFORM public.apply_late_penalty(
+            r.id,
+            EXTRACT(EPOCH FROM (r.completed_at - r.seller_accepted_at)) / 3600 - r.delivery_time_agreed_hours
+        );
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 10.4 Two-days-late admin alert queue
+CREATE OR REPLACE FUNCTION public.sweep_late_alerts()
+RETURNS INTEGER AS $$
+DECLARE
+    admin_rec RECORD;
+    late_rec RECORD;
+    v_count INTEGER := 0;
+BEGIN
+    FOR late_rec IN
+        SELECT s.id AS sub_id, o.order_number, s.seller_accepted_at, s.delivery_time_agreed_hours
+        FROM public.sub_orders s
+        JOIN public.orders o ON o.id = s.order_id
+        WHERE s.status NOT IN ('completed', 'cancelled', 'refunded')
+          AND s.seller_accepted_at IS NOT NULL AND s.delivery_time_agreed_hours IS NOT NULL
+          AND s.seller_accepted_at + (s.delivery_time_agreed_hours + 48) * INTERVAL '1 hour' < now()
+          AND NOT EXISTS (
+            SELECT 1 FROM public.notifications n
+            WHERE n.link_id = s.id::TEXT AND n.title = 'Late Delivery Alert'
+              AND n.created_at > now() - INTERVAL '24 hours'
+          )
+    LOOP
+        FOR admin_rec IN SELECT id FROM public.profiles WHERE admin_level IS NOT NULL LOOP
+            INSERT INTO public.notifications (user_id, title, message, type, link_id)
+            VALUES (
+                admin_rec.id,
+                'Late Delivery Alert',
+                'Sub-order of order ' || late_rec.order_number || ' is 2+ days past its promised window. Review for further action.',
+                'order',
+                late_rec.sub_id::TEXT
+            );
+        END LOOP;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+SELECT cron.unschedule('oja-auto-confirm') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'oja-auto-confirm');
+SELECT cron.schedule('oja-auto-confirm', '*/30 * * * *', 'SELECT public.sweep_auto_confirm()');
+SELECT cron.unschedule('oja-purge-recycle-bin') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'oja-purge-recycle-bin');
+SELECT cron.schedule('oja-purge-recycle-bin', '0 3 * * *', 'SELECT public.sweep_purge_recycle_bin()');
+SELECT cron.unschedule('oja-late-penalties') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'oja-late-penalties');
+SELECT cron.schedule('oja-late-penalties', '0 * * * *', 'SELECT public.sweep_late_penalties()');
+SELECT cron.unschedule('oja-late-alerts') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'oja-late-alerts');
+SELECT cron.schedule('oja-late-alerts', '0 * * * *', 'SELECT public.sweep_late_alerts()');

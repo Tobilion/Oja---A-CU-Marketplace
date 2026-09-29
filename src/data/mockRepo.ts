@@ -1367,6 +1367,31 @@ export class MockRepository implements Repository {
               timestamp: new Date().toISOString(),
               note: 'Order auto-completed after 48h delivery window expired. Seller payout unlocked.',
             });
+            // Late penalty still applies on auto-confirm when the seller beat
+            // the clock late: same math as buyer-confirmed receipt.
+            if (sub.sellerAcceptedAt && sub.deliveryTimeAgreedHours) {
+              const accepted = new Date(sub.sellerAcceptedAt).getTime();
+              const completed = new Date(sub.completedAt).getTime();
+              const hoursLate = (completed - accepted) / (1000 * 60 * 60) - sub.deliveryTimeAgreedHours;
+              if (hoursLate > 0) {
+                const penalty = calculateLatePenalty(sub.subtotal, hoursLate);
+                sub.penaltyAmount = penalty.penaltyAmount;
+                sub.sellerPayoutAmount = Math.max(0, sub.subtotal - penalty.penaltyAmount);
+                // 2-day-late admin alert: funds stay held until an admin acts.
+                if (penalty.isAlertLevel) {
+                  const admins = MockStorage.getUsers().filter((u) => u.adminLevel);
+                  for (const admin of admins) {
+                    this.addNotification({
+                      userId: admin.id,
+                      title: 'Late Delivery Alert',
+                      message: `Order ${ord.orderNumber} completed ${penalty.daysLate} days late. Penalty N${penalty.penaltyAmount.toLocaleString()} held from seller payout.`,
+                      type: 'order',
+                      linkId: ord.id,
+                    });
+                  }
+                }
+              }
+            }
             ordersChanged = true;
           }
         }

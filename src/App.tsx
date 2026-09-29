@@ -112,6 +112,17 @@ function AppContent() {
     loadMarketplaceData();
   }, [loadMarketplaceData]);
 
+  // H-05: run pending sweeps (48h auto-confirm, 30-day recycle purge) on app
+  // start and every 5 minutes. In Supabase mode this is a no-op: pg_cron owns
+  // the schedule (see schema section 10); in demo mode the mock repo sweeps.
+  useEffect(() => {
+    repo.runScheduledSweeps().catch((e) => console.error('Scheduled sweep failed', e));
+    const timer = setInterval(() => {
+      repo.runScheduledSweeps().catch((e) => console.error('Scheduled sweep failed', e));
+    }, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const sellerMap: Record<string, UserProfile> = {};
   for (const u of allUsers) {
     sellerMap[u.id] = u;
