@@ -26,7 +26,7 @@ interface OrderDetailModalProps {
   order: Order;
   onClose: () => void;
   onOrderUpdated: () => void;
-  onOpenReviewModal?: (listingId: string, subOrderId: string, orderId: string) => void;
+  onOpenReviewModal?: (listingId: string, subOrderId: string, orderId: string, agentId?: string) => void;
 }
 
 export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
@@ -277,7 +277,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     {/* Buyer Review */}
                     {isBuyer && sub.status === 'completed' && onOpenReviewModal && (
                       <button
-                        onClick={() => onOpenReviewModal(sub.items[0]?.listingId, sub.id, order.id)}
+                        onClick={() => onOpenReviewModal(sub.items[0]?.listingId, sub.id, order.id, sub.agentId)}
                         className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-main)] hover:bg-[var(--color-surface)] flex items-center gap-1"
                       >
                         <Star className="w-3.5 h-3.5 text-amber-500" />

@@ -87,6 +87,7 @@ function AppContent() {
     listingId: string;
     subOrderId: string;
     orderId: string;
+    agentId?: string;
   } | null>(null);
 
   const loadMarketplaceData = useCallback(async () => {
@@ -260,9 +261,9 @@ function AppContent() {
             if (updated) setSelectedOrder(updated);
             loadMarketplaceData();
           }}
-          onOpenReviewModal={(listingId, subOrderId, orderId) => {
+          onOpenReviewModal={(listingId, subOrderId, orderId, agentId) => {
             setSelectedOrder(null);
-            setReviewTarget({ listingId, subOrderId, orderId });
+            setReviewTarget({ listingId, subOrderId, orderId, agentId });
           }}
         />
       )}
@@ -339,6 +340,7 @@ function AppContent() {
           listingId={reviewTarget.listingId}
           subOrderId={reviewTarget.subOrderId}
           orderId={reviewTarget.orderId}
+          agentId={reviewTarget.agentId}
           onClose={() => setReviewTarget(null)}
           onSubmitted={loadMarketplaceData}
         />

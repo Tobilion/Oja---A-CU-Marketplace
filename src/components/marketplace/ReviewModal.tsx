@@ -13,6 +13,7 @@ interface ReviewModalProps {
   listingId: string;
   subOrderId: string;
   orderId: string;
+  agentId?: string;
   onClose: () => void;
   onSubmitted: () => void;
 }
@@ -21,6 +22,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   listingId,
   subOrderId,
   orderId,
+  agentId,
   onClose,
   onSubmitted,
 }) => {
@@ -29,6 +31,8 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [agentRating, setAgentRating] = useState(5);
+  const [agentComment, setAgentComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,6 +47,11 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         reviewerId: currentUser.id,
         rating,
         comment: comment.trim(),
+        // M-05: delivery-agent rating rides on the same verified-purchase
+        // review when an agent handled the sub-order.
+        ...(agentId
+          ? { agentId, agentRating, agentComment: agentComment.trim() || undefined }
+          : {}),
       });
       showToast('Thank you for reviewing your purchase!', 'success');
       onSubmitted();
@@ -94,6 +103,34 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
               className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs text-[var(--color-text-main)]"
             />
           </div>
+
+          {agentId && (
+            <div className="pt-2 border-t border-[var(--color-border)] space-y-2">
+              <label className="block text-[var(--color-text-muted)] font-medium text-center">
+                Rate Your Delivery Agent (1 to 5 Stars)
+              </label>
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setAgentRating(star)}
+                    className="p-1 text-emerald-500 hover:scale-110 transition-transform"
+                    aria-label={`Rate agent ${star} stars`}
+                  >
+                    <Star className={`w-5 h-5 ${agentRating >= star ? 'fill-emerald-500' : 'text-neutral-300'}`} />
+                  </button>
+                ))}
+              </div>
+              <textarea
+                rows={2}
+                value={agentComment}
+                onChange={(e) => setAgentComment(e.target.value)}
+                placeholder="How was the handover? (optional)"
+                className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs text-[var(--color-text-main)]"
+              />
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
             <button

@@ -1142,6 +1142,19 @@ export class MockRepository implements Repository {
       }
     }
 
+    // M-05: aggregate delivery-agent ratings the same way
+    if (data.agentId && data.agentRating) {
+      const users = MockStorage.getUsers();
+      const agent = users.find((u) => u.id === data.agentId);
+      if (agent) {
+        const agentReviews = reviews.filter((r) => r.agentId === data.agentId && r.agentRating);
+        agent.ratingCount = agentReviews.length;
+        agent.ratingAverage =
+          agentReviews.reduce((sum, r) => sum + (r.agentRating || 0), 0) / agentReviews.length;
+        MockStorage.setUsers(users);
+      }
+    }
+
     return newRev;
   }
 
