@@ -10,6 +10,7 @@ import {
   AdminUserUpdates,
   AvailableDelivery,
 } from './repo';
+import { isOnlyDeliveryAgentDiff } from '../utils/adminGuards';
 import {
   UserProfile,
   Listing,
@@ -95,7 +96,6 @@ export class SupabaseRepository implements Repository {
     // H-03: same guards as the mock repo (defense in depth). The trigger and
     // profiles_admin_update RLS policy enforce them server-side regardless.
     const { FOUNDING_SUPER_ADMIN_EMAILS } = await import('../config/appConfig');
-    const { isOnlyDeliveryAgentDiff } = await import('../utils/adminGuards');
     const actor = await this.getUserById(actorId);
     if (!actor?.adminLevel) throw new Error('Admin privileges required.');
     const target = await this.getUserById(targetId);
