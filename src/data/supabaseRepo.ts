@@ -656,6 +656,12 @@ export class SupabaseRepository implements Repository {
     return (data || []).map(this.mapReview);
   }
 
+  async getReviewsForAgent(agentId: string): Promise<Review[]> {
+    const { data, error } = await this.client.from('reviews').select('*').eq('agent_id', agentId).not('agent_rating', 'is', null);
+    if (error) throw error;
+    return (data || []).map(this.mapReview);
+  }
+
   async createReview(review: Omit<Review, 'id' | 'createdAt'>): Promise<Review> {
     // reviews table uses reviewer_id (the eligibility trigger checks it).
     const payload = {

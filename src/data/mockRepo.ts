@@ -1299,6 +1299,11 @@ export class MockRepository implements Repository {
     return reviews.filter((r) => r.listingId === listingId);
   }
 
+  async getReviewsForAgent(agentId: string): Promise<Review[]> {
+    const reviews = MockStorage.getReviews();
+    return reviews.filter((r) => r.agentId === agentId && r.agentRating);
+  }
+
   async createReview(data: Omit<Review, 'id' | 'createdAt'>): Promise<Review> {
     // M-05: Enforce that reviewer actually has a COMPLETED order for this listing
     const orders = MockStorage.getOrders();

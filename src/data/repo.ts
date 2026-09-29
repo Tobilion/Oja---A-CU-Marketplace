@@ -128,6 +128,7 @@ export interface Repository {
 
   // Reviews & Ratings
   getReviewsForListing(listingId: string): Promise<Review[]>;
+  getReviewsForAgent(agentId: string): Promise<Review[]>;
   createReview(review: Omit<Review, 'id' | 'createdAt'>): Promise<Review>;
 
   // Reports

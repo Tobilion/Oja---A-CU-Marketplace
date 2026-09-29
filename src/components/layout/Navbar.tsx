@@ -35,6 +35,7 @@ interface NavbarProps {
   onOpenRecycleBin: () => void;
   onOpenCreateBusiness: () => void;
   onOpenSellerPortal: () => void;
+  onOpenAgentPortal: () => void;
   onOpenAuth: () => void;
 }
 
@@ -49,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRecycleBin,
   onOpenCreateBusiness,
   onOpenSellerPortal,
+  onOpenAgentPortal,
   onOpenAuth,
 }) => {
   const { currentUser, allUsers, switchUser, isMock, signOut } = useAuth();
@@ -160,6 +162,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="hover:text-[var(--color-text-main)] transition-colors whitespace-nowrap"
             >
               Seller Portal
+            </button>
+          )}
+          {currentUser?.badges.includes('Delivery Agent') && (
+            <button
+              onClick={onOpenAgentPortal}
+              className="hover:text-[var(--color-text-main)] transition-colors whitespace-nowrap"
+            >
+              Deliveries
             </button>
           )}
           {isAdmin && (
@@ -301,6 +311,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                         className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)] font-medium"
                       >
                         Seller Portal
+                      </button>
+                    )}
+                    {currentUser.badges.includes('Delivery Agent') && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onOpenAgentPortal();
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)] font-medium"
+                      >
+                        Deliveries
                       </button>
                     )}
                     <button

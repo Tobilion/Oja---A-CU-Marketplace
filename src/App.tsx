@@ -24,6 +24,7 @@ import { SellerApplyModal } from './components/seller/SellerApplyModal';
 import { RecycleBinModal } from './components/seller/RecycleBinModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { SellerPortalModal } from './components/seller/SellerPortalModal';
+import { AgentPortalModal } from './components/delivery/AgentPortalModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { ReviewModal } from './components/marketplace/ReviewModal';
 import { Listing, Category, Hall, Business, Order, UserProfile } from './types';
@@ -84,6 +85,7 @@ function AppContent() {
   const [isRecycleBinOpen, setIsRecycleBinOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isSellerPortalOpen, setIsSellerPortalOpen] = useState(false);
+  const [isAgentPortalOpen, setIsAgentPortalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<{
     listingId: string;
@@ -192,6 +194,7 @@ function AppContent() {
         onOpenRecycleBin={() => setIsRecycleBinOpen(true)}
         onOpenCreateBusiness={() => setIsCreateBusinessOpen(true)}
         onOpenSellerPortal={() => setIsSellerPortalOpen(true)}
+        onOpenAgentPortal={() => setIsAgentPortalOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
@@ -375,6 +378,20 @@ function AppContent() {
           onOpenRecycleBin={() => {
             setIsSellerPortalOpen(false);
             setIsRecycleBinOpen(true);
+          }}
+        />
+      )}
+
+      {isAgentPortalOpen && currentUser && (
+        <AgentPortalModal
+          onClose={() => setIsAgentPortalOpen(false)}
+          onViewOrder={(ord) => {
+            setIsAgentPortalOpen(false);
+            setSelectedOrder(ord);
+          }}
+          onOpenChatWith={(uid, refOrder) => {
+            setIsAgentPortalOpen(false);
+            handleOpenChatWithUser(uid, refOrder);
           }}
         />
       )}
