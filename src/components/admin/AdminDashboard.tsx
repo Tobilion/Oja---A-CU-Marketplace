@@ -27,6 +27,7 @@ import { AdminUserUpdates } from '../../data';
 import { useListQuery } from '../../hooks/useListQuery';
 import { ListControls } from '../common/ListControls';
 import { useModalEscape } from '../../hooks/useModalEscape';
+import { canVerifyPayments, canManageLogistics, canModerate, isSuperAdmin } from '../../config/appConfig';
 import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
 import { useNotifications } from '../../context/NotificationContext';
@@ -44,8 +45,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const { showToast } = useNotifications();
 
   const [activeTab, setActiveTab] = useState<
-    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit'
+    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit' | 'deliveries' | 'agents'
   >('today');
+
+  // 5.4 role-scoped portals. A moderator sees moderation queues, a payment
+  // verifier sees money queues, a logistics admin sees movement queues, and
+  // the Super admin sees everything plus a "view as" preview switcher.
+  const myLevel = currentUser?.adminLevel || null;
+  const amSuper = isSuperAdmin(myLevel);
+  const [viewAs, setViewAs] = useState<'all' | 'moderator' | 'payment_verifier' | 'logistics_admin'>('all');
+  const effectiveLevel = amSuper && viewAs !== 'all' ? viewAs : myLevel;
+
+  const canSee = (tab: string): boolean => {
+    if (isSuperAdmin(effectiveLevel)) return true;
+    if (canModerate(effectiveLevel)) {
+      return ['today', 'sellers', 'businesses', 'reports', 'users'].includes(tab);
+    }
+    if (canVerifyPayments(effectiveLevel)) {
+      return ['today', 'payments', 'payouts'].includes(tab);
+    }
+    if (canManageLogistics(effectiveLevel)) {
+      return ['today', 'late', 'deliveries', 'agents'].includes(tab);
+    }
+    return tab === 'today';
+  };
+
+  const canEditRoles = isSuperAdmin(myLevel);
+  const canSuspend = amSuper || canModerate(myLevel);
+  const canVerifyMoney = amSuper || canVerifyPayments(myLevel);
+  const canMoveDeliveries = amSuper || canManageLogistics(myLevel);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -54,6 +82,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [halls, setHalls] = useState<Hall[]>([]);
   const [newHallName, setNewHallName] = useState('');
   const [newHallGender, setNewHallGender] = useState<'male' | 'female'>('male');
+  const [isProcessing, setIsProcessing] = useState(false);
   const modalRef = useModalEscape(true, onClose);
 
   const loadData = async () => {
@@ -142,6 +171,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .map((s) => ({ order: o, sub: s }))
   );
 
+  // Deliveries board: every sub-order still in motion (logistics portal).
+  const activeSubs = orders.flatMap((o) =>
+    o.subOrders
+      .filter((s) => !['completed', 'cancelled', 'refunded'].includes(s.status))
+      .map((s) => ({ order: o, sub: s }))
+  );
+
+  const agents = allUsers.filter((u) => u.badges.includes('Delivery Agent'));
+
+  // 5.4 role portal tabs: label + live count, filtered by canSee at render.
+  const portalTabs: { id: typeof activeTab; label: (counts: boolean) => string }[] = [
+    { id: 'today', label: () => 'Today Cockpit' },
+    { id: 'payments', label: () => `Payments (${pendingPayments.length})` },
+    { id: 'sellers', label: () => `Sellers (${pendingSellers.length})` },
+    { id: 'businesses', label: () => `Businesses (${pendingBusinesses.length})` },
+    { id: 'reports', label: () => `Reports (${pendingReports.length})` },
+    { id: 'late', label: () => `Late Orders (${lateSubOrders.length})` },
+    { id: 'deliveries', label: () => `Deliveries (${activeSubs.length})` },
+    { id: 'agents', label: () => `Agents (${agents.length})` },
+    { id: 'payouts', label: () => `Payouts (${payoutsDue.length})` },
+    { id: 'users', label: () => `Users (${allUsers.length})` },
+    { id: 'halls', label: () => `Halls (${halls.length})` },
+    { id: 'audit', label: () => 'Audit Log' },
+  ];
+
+  // If the preview switcher (or level) hides the open tab, fall back to Today.
+  useEffect(() => {
+    if (!canSee(activeTab)) setActiveTab('today');
+  }, [activeTab, effectiveLevel]);
+
   // H-02: every queue below shares the same search, sort, and pagination.
   const byOldest = (a: { createdAt: string }, b: { createdAt: string }) =>
     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -217,6 +276,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     pageSize: 12,
   });
 
+  // 5.4 logistics board queries.
+  const deliveryQuery = useListQuery<{ order: Order; sub: SubOrder }>({
+    items: activeSubs,
+    searchText: ({ order, sub }) => `${order.orderNumber} ${sub.items.map((i) => i.title).join(' ')}`,
+    sortOptions: [
+      { id: 'oldest', label: 'Oldest first', compare: (a, b) => +new Date(a.order.createdAt) - +new Date(b.order.createdAt) },
+      { id: 'penalty', label: 'Highest penalty', compare: (a, b) => b.sub.penaltyAmount - a.sub.penaltyAmount },
+    ],
+    pageSize: 8,
+  });
+
+  const agentQuery = useListQuery<UserProfile>({
+    items: agents,
+    searchText: (u) => `${u.fullName} ${u.username} ${u.gender}`,
+    sortOptions: [
+      { id: 'name', label: 'Name A-Z', compare: (a, b) => a.fullName.localeCompare(b.fullName) },
+      { id: 'rating', label: 'Highest rated', compare: (a, b) => b.ratingAverage - a.ratingAverage },
+    ],
+    pageSize: 8,
+  });
+
+  const [assignPick, setAssignPick] = useState<Record<string, string>>({});
+  const [extendTarget, setExtendTarget] = useState<string | null>(null);
+  const [extendHours, setExtendHours] = useState('24');
+  const [extendReason, setExtendReason] = useState('');
+  const [promoteUsername, setPromoteUsername] = useState('');
+
+  const sellerHallGender = (sellerId: string) => {
+    const seller = allUsers.find((u) => u.id === sellerId);
+    return halls.find((h) => h.id === seller?.hallId)?.gender || null;
+  };
+
+  const eligibleAgents = (sellerId: string) => {
+    const gender = sellerHallGender(sellerId);
+    return agents.filter((a) => !gender || gender === 'mixed' || a.gender === gender);
+  };
+
+  const agentName = (id?: string | null) => {
+    if (!id) return 'Unassigned';
+    return allUsers.find((u) => u.id === id)?.fullName || 'Unknown agent';
+  };
+
+  const promisedBy = (sub: SubOrder) => {
+    if (!sub.sellerAcceptedAt || !sub.deliveryTimeAgreedHours) return null;
+    return new Date(new Date(sub.sellerAcceptedAt).getTime() + sub.deliveryTimeAgreedHours * 3600 * 1000);
+  };
+
+  const handleAssignAgent = async (orderId: string, subId: string) => {
+    if (!canMoveDeliveries) {
+      showToast('Only a Logistics admin or Super admin can assign deliveries.', 'error');
+      return;
+    }
+    const agentId = assignPick[subId];
+    if (!agentId || !currentUser) return;
+    setIsProcessing(true);
+    try {
+      await repo.assignDeliveryAgent(orderId, subId, agentId);
+      showToast('Agent assigned.', 'success');
+      await loadData();
+    } catch (err: any) {
+      showToast(err?.message || 'Assignment failed', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleExtendPromise = async (orderId: string, subId: string) => {
+    if (!canMoveDeliveries) {
+      showToast('Only a Logistics admin or Super admin can extend the delivery promise.', 'error');
+      return;
+    }
+    const hours = parseInt(extendHours, 10);
+    if (!hours || hours <= 0 || !extendReason.trim() || !currentUser) {
+      showToast('Enter extra hours and a reason for the buyer.', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await repo.extendDeliveryPromise(orderId, subId, hours, extendReason.trim(), currentUser.id);
+      showToast('Delivery promise extended. Buyer notified.', 'success');
+      setExtendTarget(null);
+      setExtendReason('');
+      await loadData();
+    } catch (err: any) {
+      showToast(err?.message || 'Extension failed', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const agentDeliveryCount = (agentId: string) =>
+    orders.reduce((n, o) => n + o.subOrders.filter((s) => s.agentId === agentId).length, 0);
+
+  const handlePromoteAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canMoveDeliveries) {
+      showToast('Only a Logistics admin or Super admin can promote agents.', 'error');
+      return;
+    }
+    if (!currentUser) return;
+    const clean = promoteUsername.trim().replace(/^@/, '').toLowerCase();
+    const target = allUsers.find((u) => u.username.toLowerCase() === clean);
+    if (!target) {
+      showToast(`No student found with username @${clean}.`, 'error');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await repo.adminUpdateUser(currentUser.id, target.id, {
+        badges: target.badges.includes('Delivery Agent') ? target.badges : [...target.badges, 'Delivery Agent'],
+      });
+      setPromoteUsername('');
+      showToast(`${target.fullName} is now a delivery agent.`, 'success');
+      await refreshUser();
+      await loadData();
+    } catch (err: any) {
+      showToast(err?.message || 'Promotion failed', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRevokeAgent = async (target: UserProfile) => {
+    if (!canMoveDeliveries) {
+      showToast('Only a Logistics admin or Super admin can revoke agents.', 'error');
+      return;
+    }
+    if (!currentUser || !confirm(`Remove delivery-agent duties from ${target.fullName}?`)) return;
+    setIsProcessing(true);
+    try {
+      await repo.adminUpdateUser(currentUser.id, target.id, {
+        badges: target.badges.filter((b) => b !== 'Delivery Agent'),
+      });
+      showToast('Agent duties revoked.', 'info');
+      await refreshUser();
+      await loadData();
+    } catch (err: any) {
+      showToast(err?.message || 'Revocation failed', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const auditQuery = useListQuery<AuditLogEntry>({
     items: auditLogs,
     searchText: (l) => `${l.action} ${l.adminEmail} ${l.targetType} ${l.targetId} ${l.details || ''}`,
@@ -228,6 +430,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   const handleVerifyPayment = async (orderId: string, approved: boolean) => {
+    if (!canVerifyMoney) {
+      showToast('Only a Payment verifier or Super admin can verify payments.', 'error');
+      return;
+    }
     await repo.verifyPayment(orderId, approved);
     await repo.logAdminAction({
       adminId: currentUser?.id || 'admin',
@@ -243,9 +449,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleApproveSeller = async (targetUser: UserProfile, approve: boolean) => {
+    if (!currentUser) return;
+    if (!(amSuper || canModerate(myLevel))) {
+      showToast('Only a Moderator or Super admin can decide seller applications.', 'error');
+      return;
+    }
     // B-04 allowlist strips privileged fields from updateUserProfile, so
     // seller approval must flow through the privileged admin path.
-    if (!currentUser) return;
     try {
       await repo.adminUpdateUser(currentUser.id, targetUser.id, {
         isSellerApproved: approve,
@@ -271,6 +481,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleApproveBusiness = async (biz: Business, approve: boolean) => {
+    if (!(amSuper || canModerate(myLevel))) {
+      showToast('Only a Moderator or Super admin can decide business approvals.', 'error');
+      return;
+    }
     await repo.updateBusiness(biz.id, { status: approve ? 'approved' : 'rejected' });
     await repo.logAdminAction({
       adminId: currentUser?.id || 'admin',
@@ -288,6 +502,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const pendingTransfers = businesses.filter((b) => b.transferRequest?.status === 'pending');
 
   const handleTransferDecision = async (biz: Business, approved: boolean) => {
+    if (!amSuper) {
+      showToast('Only a Super admin can approve ownership transfers.', 'error');
+      return;
+    }
     if (approved && !confirm(`Transfer ownership of ${biz.name} to the nominated student?`)) return;
     try {
       await repo.approveBusinessOwnershipTransfer(biz.id, approved);
@@ -308,6 +526,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleResolveReport = async (repId: string, action: 'resolved' | 'dismissed') => {
+    if (!(amSuper || canModerate(myLevel))) {
+      showToast('Only a Moderator or Super admin can resolve reports.', 'error');
+      return;
+    }
     await repo.resolveReport(repId, action);
     await repo.logAdminAction({
       adminId: currentUser?.id || 'admin',
@@ -322,6 +544,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleMarkPayoutPaid = async (subOrderId: string) => {
+    if (!canVerifyMoney) {
+      showToast('Only a Payment verifier or Super admin can dispatch payouts.', 'error');
+      return;
+    }
     await repo.markSellerPayoutPaid(subOrderId);
     await repo.logAdminAction({
       adminId: currentUser?.id || 'admin',
@@ -337,6 +563,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleAddHall = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!amSuper) {
+      showToast('Only a Super admin can manage halls.', 'error');
+      return;
+    }
     if (!newHallName.trim()) return;
     const newId = 'hall_' + newHallName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     await repo.updateHall({
@@ -354,7 +584,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-5xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
+        <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-[var(--color-brand-primary)]" />
             <h2 className="text-base font-bold text-[var(--color-text-main)]">Oja Admin Operations Cockpit</h2>
@@ -362,115 +592,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {currentUser?.adminLevel?.replace(/_/g, ' ').toUpperCase() || 'SUPER ADMIN'}
             </span>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {amSuper && (
+              <label className="text-[11px] text-[var(--color-text-muted)]">
+                View{' '}
+                <select
+                  value={viewAs}
+                  onChange={(e) => setViewAs(e.target.value as typeof viewAs)}
+                  aria-label="Preview portal as role"
+                  className="ml-1 px-2 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text-main)]"
+                >
+                  <option value="all">All portals</option>
+                  <option value="moderator">Moderator</option>
+                  <option value="payment_verifier">Payment verifier</option>
+                  <option value="logistics_admin">Logistics admin</option>
+                </select>
+              </label>
+            )}
+            <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close admin">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Admin Tab Navigation */}
+        {/* Admin Tab Navigation: 5.4 role portals share one shell */}
         {/* H-01: shrink-0 + inherited line-height keep labels out of the
-            divider; snap-x gives phones a scroll affordance for 10 tabs. */}
+            divider; snap-x gives phones a scroll affordance for 12 tabs. */}
         <div className="flex shrink-0 overflow-x-auto snap-x scroll-px-4 border-b border-[var(--color-border)] text-xs font-semibold leading-5 px-4 no-scrollbar [&>button]:shrink-0 [&>button]:snap-start">
-          <button
-            onClick={() => setActiveTab('today')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'today'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Today Cockpit
-          </button>
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'payments'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Payments ({pendingPayments.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('sellers')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'sellers'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Sellers ({pendingSellers.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('businesses')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'businesses'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Businesses ({pendingBusinesses.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'reports'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Reports ({pendingReports.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('late')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'late'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Late Orders ({lateSubOrders.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('payouts')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'payouts'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Payouts ({payoutsDue.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'users'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Users ({allUsers.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('halls')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'halls'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Halls ({halls.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'audit'
-                ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
-                : 'border-transparent text-[var(--color-text-muted)]'
-            }`}
-          >
-            Audit Log
-          </button>
+          {portalTabs
+            .filter((t) => canSee(t.id))
+            .map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
+                  activeTab === t.id
+                    ? 'border-[var(--color-brand-primary)] text-[var(--color-brand-primary)]'
+                    : 'border-transparent text-[var(--color-text-muted)]'
+                }`}
+              >
+                {t.label(true)}
+              </button>
+            ))}
         </div>
 
         {/* Tab Content */}
@@ -479,6 +642,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'today' && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {canSee('payments') && (
                 <div
                   onClick={() => setActiveTab('payments')}
                   className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
@@ -486,7 +650,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Payments to Verify</p>
                   <p className="text-2xl font-bold font-mono text-[var(--color-text-main)] mt-1">{pendingPayments.length}</p>
                 </div>
+                )}
 
+                {canSee('sellers') && (
                 <div
                   onClick={() => setActiveTab('sellers')}
                   className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
@@ -494,7 +660,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Seller Applications</p>
                   <p className="text-2xl font-bold font-mono text-[var(--color-text-main)] mt-1">{pendingSellers.length}</p>
                 </div>
+                )}
 
+                {canSee('businesses') && (
                 <div
                   onClick={() => setActiveTab('businesses')}
                   className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
@@ -502,7 +670,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Business Approvals</p>
                   <p className="text-2xl font-bold font-mono text-[var(--color-text-main)] mt-1">{pendingBusinesses.length}</p>
                 </div>
+                )}
 
+                {canSee('reports') && (
                 <div
                   onClick={() => setActiveTab('reports')}
                   className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
@@ -510,7 +680,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Pending Reports</p>
                   <p className="text-2xl font-bold font-mono text-[var(--color-text-main)] mt-1">{pendingReports.length}</p>
                 </div>
+                )}
+                {canSee('reports') && pendingTransfers.length > 0 && (
+                <div
+                  onClick={() => setActiveTab('businesses')}
+                  className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
+                >
+                  <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Ownership Transfers</p>
+                  <p className="text-2xl font-bold font-mono text-amber-600 mt-1">{pendingTransfers.length}</p>
+                </div>
+                )}
 
+                {canSee('late') && (
                 <div
                   onClick={() => setActiveTab('late')}
                   className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
@@ -518,7 +699,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Late Orders Alert</p>
                   <p className="text-2xl font-bold font-mono text-amber-600 mt-1">{lateSubOrders.length}</p>
                 </div>
+                )}
 
+                {canSee('deliveries') && (
+                <div
+                  onClick={() => setActiveTab('deliveries')}
+                  className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
+                >
+                  <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">In-Transit Deliveries</p>
+                  <p className="text-2xl font-bold font-mono text-[var(--color-text-main)] mt-1">{activeSubs.length}</p>
+                </div>
+                )}
+
+                {canSee('payouts') && (
                 <div
                   onClick={() => setActiveTab('payouts')}
                   className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors"
@@ -526,6 +719,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="text-[11px] font-semibold text-[var(--color-text-muted)]">Seller Payouts Due</p>
                   <p className="text-2xl font-bold font-mono text-emerald-600 mt-1">{payoutsDue.length}</p>
                 </div>
+                )}
               </div>
 
               {/* Priority Action Items */}
@@ -656,7 +850,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 4. BUSINESSES QUEUE */}
           {activeTab === 'businesses' && (
             <div className="space-y-3">
-              {pendingTransfers.length > 0 && (
+              {amSuper && pendingTransfers.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="font-bold text-[var(--color-text-main)]">
                     Ownership Transfers ({pendingTransfers.length})
@@ -840,6 +1034,192 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
 
+          {/* 6b. DELIVERIES BOARD (logistics portal) */}
+          {activeTab === 'deliveries' && canSee('deliveries') && (
+            <div className="space-y-3">
+              <ListControls
+                query={deliveryQuery.query}
+                onQueryChange={deliveryQuery.setQuery}
+                searchPlaceholder="Search order number, item..."
+                sortId={deliveryQuery.sortId}
+                onSortChange={deliveryQuery.setSortId}
+                sortOptions={deliveryQuery.sortOptions}
+                page={deliveryQuery.page}
+                totalPages={deliveryQuery.totalPages}
+                onPageChange={deliveryQuery.setPage}
+                total={deliveryQuery.total}
+                itemLabel="in-transit"
+              />
+              {deliveryQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {deliveryQuery.query ? 'No deliveries match this search.' : 'Nothing in transit right now.'}
+                </p>
+              ) : (
+                deliveryQuery.pageItems.map(({ order, sub }) => {
+                  const due = promisedBy(sub);
+                  const late = sub.penaltyAmount > 0;
+                  const options = eligibleAgents(sub.sellerId);
+                  return (
+                    <div
+                      key={sub.id}
+                      className={`p-4 rounded-xl border space-y-2 ${late ? 'bg-amber-500/10 border-amber-500/30' : 'bg-[var(--color-surface-subtle)] border-[var(--color-border)]'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <span className="font-mono font-bold text-[var(--color-text-main)]">{order.orderNumber}</span>
+                          <span className="ml-2 text-[11px] font-semibold capitalize text-[var(--color-text-muted)]">
+                            {sub.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[var(--color-text-muted)]">
+                          Agent: <strong className="text-[var(--color-text-main)]">{agentName(sub.agentId)}</strong>
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-text-muted)]">
+                        {sub.items.map((i) => `${i.quantity}× ${i.title}`).join(' · ')} · Drop {formatHallName(order.deliveryHallId)} {order.deliveryRoom}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-text-muted)]">
+                        {due ? `Promised by ${due.toLocaleString()}` : 'Promise clock not started yet'}
+                        {late && <span className="text-red-600 font-semibold"> · Late penalty {formatNaira(sub.penaltyAmount)}</span>}
+                      </p>
+                      {sub.status === 'ready' && !sub.agentId && (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={assignPick[sub.id] || ''}
+                            onChange={(e) => setAssignPick((prev) => ({ ...prev, [sub.id]: e.target.value }))}
+                            aria-label="Assign agent"
+                            className="flex-1 px-2 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg"
+                          >
+                            <option value="">Pick an agent ({options.length} eligible)</option>
+                            {options.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.fullName} · {a.gender} · {agentDeliveryCount(a.id)} runs
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => handleAssignAgent(order.id, sub.id)}
+                            disabled={!assignPick[sub.id] || isProcessing}
+                            className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold disabled:opacity-50 shrink-0"
+                          >
+                            Assign
+                          </button>
+                        </div>
+                      )}
+                      {['seller_accepted', 'ready', 'agent_assigned', 'picked_up', 'out_for_delivery'].includes(sub.status) && (
+                        <div className="pt-1">
+                          {extendTarget === sub.id ? (
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                type="number"
+                                min={1}
+                                value={extendHours}
+                                onChange={(e) => setExtendHours(e.target.value)}
+                                placeholder="Extra hours"
+                                aria-label="Extra hours"
+                                className="w-28 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-2 py-1.5 font-mono"
+                              />
+                              <input
+                                value={extendReason}
+                                onChange={(e) => setExtendReason(e.target.value)}
+                                placeholder="Reason shown to buyer"
+                                aria-label="Extension reason"
+                                className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-1.5"
+                              />
+                              <button
+                                onClick={() => handleExtendPromise(order.id, sub.id)}
+                                disabled={isProcessing}
+                                className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold disabled:opacity-50 shrink-0"
+                              >
+                                Extend
+                              </button>
+                              <button onClick={() => setExtendTarget(null)} className="px-2 py-1.5 text-neutral-400 shrink-0">
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setExtendTarget(sub.id);
+                                setExtendHours('24');
+                                setExtendReason('');
+                              }}
+                              className="px-3 py-1 rounded-lg border border-[var(--color-border)]"
+                            >
+                              Extend delivery promise
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* 6c. AGENTS (logistics portal) */}
+          {activeTab === 'agents' && canSee('agents') && (
+            <div className="space-y-3">
+              <form onSubmit={handlePromoteAgent} className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex gap-2">
+                <input
+                  value={promoteUsername}
+                  onChange={(e) => setPromoteUsername(e.target.value)}
+                  placeholder="Promote @username to delivery agent"
+                  aria-label="Promote username"
+                  className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-1.5"
+                />
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="px-4 py-1.5 bg-[var(--color-brand-primary)] text-white rounded-lg font-semibold disabled:opacity-50 shrink-0"
+                >
+                  Promote
+                </button>
+              </form>
+              <ListControls
+                query={agentQuery.query}
+                onQueryChange={agentQuery.setQuery}
+                searchPlaceholder="Search agents..."
+                sortId={agentQuery.sortId}
+                onSortChange={agentQuery.setSortId}
+                sortOptions={agentQuery.sortOptions}
+                page={agentQuery.page}
+                totalPages={agentQuery.totalPages}
+                onPageChange={agentQuery.setPage}
+                total={agentQuery.total}
+                itemLabel="agents"
+              />
+              {agentQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {agentQuery.query ? 'No agents match this search.' : 'No delivery agents yet.'}
+                </p>
+              ) : (
+                agentQuery.pageItems.map((a) => (
+                  <div
+                    key={a.id}
+                    className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  >
+                    <div>
+                      <span className="font-bold text-[var(--color-text-main)]">{a.fullName}</span>
+                      <span className="ml-2 text-[11px] font-mono text-[var(--color-text-muted)]">@{a.username} · {a.gender}</span>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+                        {agentDeliveryCount(a.id)} runs · {a.ratingAverage.toFixed(1)} rating ({a.ratingCount})
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRevokeAgent(a)}
+                      disabled={isProcessing}
+                      className="px-2.5 py-1 rounded border border-red-500/30 text-red-600 shrink-0 disabled:opacity-50"
+                    >
+                      Revoke Agent
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           {/* 7. PAYOUTS QUEUE */}
           {activeTab === 'payouts' && (
             <div className="space-y-3">
@@ -945,7 +1325,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             Level{' '}
                             <select
                               value={u.adminLevel || 'none'}
-                              disabled={isSelf}
+                              disabled={isSelf || !canEditRoles}
+                              title={canEditRoles ? 'Assign admin level' : 'Only a Super admin can assign levels'}
                               onChange={(e) => handleAdminLevelChange(u, e.target.value)}
                               className="ml-1 px-2 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text-main)] disabled:opacity-40"
                             >
@@ -957,7 +1338,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </select>
                           </label>
                           <button
-                            disabled={isSelf}
+                            disabled={isSelf || !canSuspend}
+                            title={canSuspend ? (u.isSuspended ? 'Unsuspend' : 'Suspend') : 'Only a Moderator or Super admin can suspend'}
                             onClick={() => {
                               if (!u.isSuspended && !confirm(`Suspend ${u.fullName}? They lose buying and selling access until unsuspended.`)) return;
                               handleAdminUserUpdate(u.id, { isSuspended: !u.isSuspended });
@@ -975,13 +1357,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           return (
                             <button
                               key={b}
-                              disabled={isSelf}
+                              disabled={isSelf || !canEditRoles}
+                              title={canEditRoles ? (has ? `Revoke ${b}` : `Grant ${b}`) : 'Only a Super admin can change badges'}
                               onClick={() =>
                                 handleAdminUserUpdate(u.id, {
                                   badges: has ? u.badges.filter((x) => x !== b) : [...u.badges, b],
                                 })
                               }
-                              title={has ? `Revoke ${b}` : `Grant ${b}`}
                               className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                                 has
                                   ? 'bg-[var(--color-brand-primary)]/10 text-[var(--color-brand-primary)] border-[var(--color-brand-primary)]/30 font-semibold'
@@ -994,8 +1376,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         })}
                         {u.sellerApplicationStatus === 'pending' && (
                           <button
+                            disabled={!canSuspend}
+                            title={canSuspend ? 'Approve seller application' : 'Only a Moderator or Super admin can approve sellers'}
                             onClick={() => handleAdminUserUpdate(u.id, { isSellerApproved: true, sellerApplicationStatus: 'approved' })}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold"
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold disabled:opacity-40"
                           >
                             Approve seller application
                           </button>
