@@ -375,14 +375,15 @@ export class SupabaseRepository implements Repository {
     return createdOrder;
   }
 
-  async advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string): Promise<Order> {
+  async advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string, actorId?: string): Promise<Order> {
     const { data: { user } } = await this.client.auth.getUser();
-    const actorId = user?.id || (await this.getUserById(subOrderId))?.id;
+    const resolvedActorId = actorId || user?.id;
+    if (!resolvedActorId) throw new Error('Sign in required to update order status.');
     const { error } = await this.client.rpc('advance_order_status', {
       p_order_id: orderId,
       p_sub_order_id: subOrderId,
       p_next_state: nextState,
-      p_actor_id: actorId,
+      p_actor_id: resolvedActorId,
       p_note: note || null,
     });
     if (error) throw error;

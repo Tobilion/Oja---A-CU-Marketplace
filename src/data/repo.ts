@@ -74,7 +74,7 @@ export interface Repository {
 
   // Orders & Lifecycle
   placeOrder(input: PlaceOrderInput): Promise<Order>;
-  advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string): Promise<Order>;
+  advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string, actorId?: string): Promise<Order>;
   rejectSubOrder(orderId: string, subOrderId: string, reason: string): Promise<Order>;
   cancelOrder(orderId: string, reason: string): Promise<Order>;
   disputeOrder(orderId: string, reason: string): Promise<Order>;

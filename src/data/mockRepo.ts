@@ -27,6 +27,7 @@ import {
 } from '../types';
 import { MockStorage } from './mockStorage';
 import { calculateOrderDeliveryFee, calculateLatePenalty } from '../utils/deliveryFee';
+import { VALID_ORDER_TRANSITIONS, validateOrderTransition, deriveOrderActorRole } from '../utils/transitions';
 
 export class MockRepository implements Repository {
   readonly isMock = true;
@@ -652,12 +653,33 @@ export class MockRepository implements Repository {
     return newOrder;
   }
 
-  async advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string): Promise<Order> {
+  async advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string, actorId?: string): Promise<Order> {
     const orders = MockStorage.getOrders();
     const order = orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
     const sub = order.subOrders.find((s) => s.id === subOrderId);
     if (!sub) throw new Error('Sub-order not found');
+
+    // H-04: enforce the shared transition map. Legality always applies; actor
+    // and role validation applies when the caller identifies the actor.
+    const legalNext = VALID_ORDER_TRANSITIONS[sub.status] || [];
+    if (!legalNext.includes(nextState)) {
+      throw new Error(`Illegal state transition from "${sub.status}" to "${nextState}".`);
+    }
+    if (actorId) {
+      const users = MockStorage.getUsers();
+      const actor = users.find((u) => u.id === actorId);
+      const role = deriveOrderActorRole({
+        buyerId: order.buyerId,
+        sellerId: sub.sellerId,
+        agentId: sub.agentId,
+        actorId,
+        adminLevel: actor?.adminLevel ?? null,
+      });
+      if (!role) throw new Error('You are not a party to this order.');
+      const check = validateOrderTransition(sub.status, nextState, role, actor?.adminLevel ?? null);
+      if (!check.allowed) throw new Error(check.reason || 'Transition not permitted for your role.');
+    }
 
     sub.status = nextState;
     sub.statusTimeline.push({

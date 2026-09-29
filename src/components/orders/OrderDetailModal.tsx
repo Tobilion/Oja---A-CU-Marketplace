@@ -75,11 +75,11 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const handleAdvanceStatus = async (subOrderId: string, next: OrderState, note?: string) => {
     setIsProcessing(true);
     try {
-      await repo.advanceOrderStatus(order.id, subOrderId, next, note);
+      await repo.advanceOrderStatus(order.id, subOrderId, next, note, currentUser?.id);
       showToast(`Status updated to ${next.replace(/_/g, ' ')}`, 'info');
       onOrderUpdated();
-    } catch {
-      showToast('Failed to update status', 'error');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update status', 'error');
     } finally {
       setIsProcessing(false);
     }
