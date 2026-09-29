@@ -19,12 +19,29 @@ export const isSupabaseConfigMissing = !IS_DEMO_MODE && !hasValidSupabase;
 
 // If in demo mode, use MockRepository.
 // If in production/public mode with valid credentials, use SupabaseRepository.
-// If in production without credentials, use an error-throwing dummy or SupabaseRepository so mock is never silently used.
+// If in production without credentials, export an error-throwing stub so mock data
+// can never be silently used. App.tsx halts rendering via isSupabaseConfigMissing.
+function createMissingConfigStub(): Repository {
+  return new Proxy(
+    { isMock: false },
+    {
+      get(target, prop) {
+        if (prop === 'isMock') return false;
+        return () => {
+          throw new Error(
+            'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, or run with VITE_APP_MODE=demo.'
+          );
+        };
+      },
+    }
+  ) as Repository;
+}
+
 export const repo: Repository =
   IS_DEMO_MODE
     ? new MockRepository()
     : hasValidSupabase
     ? new SupabaseRepository(supabaseUrl!, supabaseAnonKey!)
-    : (new MockRepository()); // Note: isSupabaseConfigMissing will halt UI rendering in App.tsx
+    : createMissingConfigStub();
 
 export * from './repo';
