@@ -49,15 +49,24 @@ export class SupabaseRepository implements Repository {
   }
 
   async getUsers(): Promise<UserProfile[]> {
+    // M-02: full profiles are owner/admin-only under RLS. Anonymous shoppers
+    // and non-admin users read the public_profiles view (no room, matric/reg,
+    // emails, or bank details); admins still get full rows.
     const { data, error } = await this.client.from('profiles').select('*');
-    if (error) throw error;
-    return (data || []).map(this.mapProfile);
+    if (!error) return (data || []).map(this.mapProfile);
+    const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*');
+    if (pubError) throw error;
+    return (pub || []).map(this.mapPublicProfile);
   }
 
   async getUserById(id: string): Promise<UserProfile | null> {
     const { data, error } = await this.client.from('profiles').select('*').eq('id', id).single();
-    if (error || !data) return null;
-    return this.mapProfile(data);
+    if (!error && data) return this.mapProfile(data);
+    // M-02: fall back to the public view when the caller may not read the
+    // private row (e.g. a shopper opening a seller storefront).
+    const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*').eq('id', id).single();
+    if (pubError || !pub) return null;
+    return this.mapPublicProfile(pub);
   }
 
   async updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
@@ -802,6 +811,33 @@ export class SupabaseRepository implements Repository {
       sellerApplicationStatus: row.seller_application_status,
       sellerApplicationDate: row.seller_application_date,
       isSuspended: row.is_suspended,
+      ratingAverage: Number(row.rating_average || 5.0),
+      ratingCount: Number(row.rating_count || 0),
+      createdAt: row.created_at,
+    };
+  }
+
+  private mapPublicProfile(row: any): UserProfile {
+    // Rows from public.public_profiles: safe fields only. Private fields are
+    // empty by design so UI code keeps working without ever seeing them.
+    return {
+      id: row.id,
+      fullName: row.full_name,
+      username: row.username,
+      personalEmail: '',
+      schoolEmail: '',
+      isSchoolEmailVerified: false,
+      isPersonalEmailVerified: false,
+      hallId: row.hall_id,
+      roomNumber: '',
+      gender: row.gender,
+      telegramHandle: row.telegram_handle,
+      bio: row.bio,
+      avatarUrl: row.avatar_url,
+      badges: row.badges || ['Member'],
+      adminLevel: row.admin_level,
+      isSellerApproved: row.is_seller_approved,
+      isSuspended: false,
       ratingAverage: Number(row.rating_average || 5.0),
       ratingCount: Number(row.rating_count || 0),
       createdAt: row.created_at,
