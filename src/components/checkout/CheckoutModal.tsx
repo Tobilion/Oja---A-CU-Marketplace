@@ -62,7 +62,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   };
 
   const handlePlaceOrder = async () => {
-    if (!currentUser) return;
+    // Guard against double-click / double-tap submitting two orders.
+    if (!currentUser || isSubmitting) return;
     setIsSubmitting(true);
     setErrorMsg(null);
 
