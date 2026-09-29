@@ -66,7 +66,8 @@ export class MockRepository implements Repository {
     const idx = users.findIndex((u) => u.id === id);
     if (idx === -1) throw new Error('User not found');
 
-    // B-04: Strip privileged columns to prevent self-escalation
+    // B-04: Strip privileged columns to prevent self-escalation.
+    // Bank details are the seller's own payout data, so self-update is allowed.
     const safeUpdates: Partial<UserProfile> = {
       fullName: updates.fullName,
       username: updates.username,
@@ -79,6 +80,7 @@ export class MockRepository implements Repository {
       bio: updates.bio,
       avatarUrl: updates.avatarUrl,
       personalEmail: updates.personalEmail,
+      bankDetails: updates.bankDetails,
     };
     // Strip undefined properties
     Object.keys(safeUpdates).forEach((k) => {

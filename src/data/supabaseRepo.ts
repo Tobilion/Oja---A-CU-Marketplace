@@ -72,7 +72,8 @@ export class SupabaseRepository implements Repository {
   }
 
   async updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    // B-04: Only permit non-privileged columns in user self-updates
+    // B-04: Only permit non-privileged columns in user self-updates.
+    // Bank details are the seller's own payout data, so self-update is allowed.
     const payload: any = {};
     if (updates.fullName !== undefined) payload.full_name = updates.fullName;
     if (updates.hallId !== undefined) payload.hall_id = updates.hallId;
@@ -83,6 +84,7 @@ export class SupabaseRepository implements Repository {
     if (updates.matricNumber !== undefined) payload.matric_number = updates.matricNumber;
     if (updates.regNumber !== undefined) payload.reg_number = updates.regNumber;
     if (updates.personalEmail !== undefined) payload.personal_email = updates.personalEmail;
+    if (updates.bankDetails !== undefined) payload.bank_details = updates.bankDetails;
 
     const { data, error } = await this.client.from('profiles').update(payload).eq('id', id).select().single();
     if (error) throw error;

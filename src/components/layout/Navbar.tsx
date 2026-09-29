@@ -34,6 +34,7 @@ interface NavbarProps {
   onOpenSellerApply: () => void;
   onOpenRecycleBin: () => void;
   onOpenCreateBusiness: () => void;
+  onOpenSellerPortal: () => void;
   onOpenAuth: () => void;
 }
 
@@ -47,6 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSellerApply,
   onOpenRecycleBin,
   onOpenCreateBusiness,
+  onOpenSellerPortal,
   onOpenAuth,
 }) => {
   const { currentUser, allUsers, switchUser, isMock, signOut } = useAuth();
@@ -152,6 +154,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             My Store & Hall
           </button>
+          {(currentUser?.isSellerApproved || currentUser?.badges.includes('Business Owner')) && (
+            <button
+              onClick={onOpenSellerPortal}
+              className="hover:text-[var(--color-text-main)] transition-colors whitespace-nowrap"
+            >
+              Seller Portal
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={onOpenAdmin}
@@ -280,6 +290,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                         className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-[var(--color-brand-primary)] font-medium"
                       >
                         Apply for Seller Badge
+                      </button>
+                    )}
+                    {(currentUser.isSellerApproved || currentUser.badges.includes('Business Owner')) && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onOpenSellerPortal();
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)] font-medium"
+                      >
+                        Seller Portal
                       </button>
                     )}
                     <button

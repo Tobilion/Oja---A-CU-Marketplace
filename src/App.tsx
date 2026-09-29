@@ -23,6 +23,7 @@ import { CreateListingModal } from './components/listings/CreateListingModal';
 import { SellerApplyModal } from './components/seller/SellerApplyModal';
 import { RecycleBinModal } from './components/seller/RecycleBinModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+import { SellerPortalModal } from './components/seller/SellerPortalModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { ReviewModal } from './components/marketplace/ReviewModal';
 import { Listing, Category, Hall, Business, Order, UserProfile } from './types';
@@ -82,6 +83,7 @@ function AppContent() {
   const [isSellerApplyOpen, setIsSellerApplyOpen] = useState(false);
   const [isRecycleBinOpen, setIsRecycleBinOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isSellerPortalOpen, setIsSellerPortalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<{
     listingId: string;
@@ -189,6 +191,7 @@ function AppContent() {
         onOpenSellerApply={() => setIsSellerApplyOpen(true)}
         onOpenRecycleBin={() => setIsRecycleBinOpen(true)}
         onOpenCreateBusiness={() => setIsCreateBusinessOpen(true)}
+        onOpenSellerPortal={() => setIsSellerPortalOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
@@ -350,6 +353,29 @@ function AppContent() {
         <RecycleBinModal
           onClose={() => setIsRecycleBinOpen(false)}
           onListingsUpdated={loadMarketplaceData}
+        />
+      )}
+
+      {isSellerPortalOpen && currentUser && (
+        <SellerPortalModal
+          businesses={businesses}
+          onClose={() => setIsSellerPortalOpen(false)}
+          onViewOrder={(ord) => {
+            setIsSellerPortalOpen(false);
+            setSelectedOrder(ord);
+          }}
+          onOpenChatWith={(uid, refOrder) => {
+            setIsSellerPortalOpen(false);
+            handleOpenChatWithUser(uid, refOrder);
+          }}
+          onOpenCreateListing={() => {
+            setIsSellerPortalOpen(false);
+            setIsCreateListingOpen(true);
+          }}
+          onOpenRecycleBin={() => {
+            setIsSellerPortalOpen(false);
+            setIsRecycleBinOpen(true);
+          }}
         />
       )}
 
