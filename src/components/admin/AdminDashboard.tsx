@@ -200,7 +200,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Admin Tab Navigation */}
-        <div className="flex overflow-x-auto border-b border-[var(--color-border)] text-xs font-semibold px-4 no-scrollbar">
+        {/* H-01: shrink-0 + inherited line-height keep labels out of the
+            divider; snap-x gives phones a scroll affordance for 10 tabs. */}
+        <div className="flex shrink-0 overflow-x-auto snap-x scroll-px-4 border-b border-[var(--color-border)] text-xs font-semibold leading-5 px-4 no-scrollbar [&>button]:shrink-0 [&>button]:snap-start">
           <button
             onClick={() => setActiveTab('today')}
             className={`py-3 px-3 border-b-2 whitespace-nowrap transition-colors ${
