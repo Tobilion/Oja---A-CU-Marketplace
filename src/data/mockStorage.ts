@@ -30,10 +30,61 @@ import {
   SEED_NOTIFICATIONS,
   SEED_AUDIT_LOGS,
 } from './seedOrders';
+import {
+  EXTRA_USERS,
+  EXTRA_BUSINESSES,
+  EXTRA_LISTINGS,
+  EXTRA_ORDERS,
+  EXTRA_REVIEWS,
+  EXTRA_REPORTS,
+  EXTRA_CHAT_THREADS,
+  EXTRA_CHAT_MESSAGES,
+  EXTRA_NOTIFICATIONS,
+  EXTRA_FEEDBACKS,
+} from './seedExtra';
 import { INITIAL_HALLS } from '../utils/halls';
 import { DEFAULT_CATEGORIES } from '../utils/taxonomy';
 
 const STORAGE_PREFIX = 'oja_db_v1_';
+
+/**
+ * 6.1 Bump this whenever the seed pack changes. A mismatch wipes the stored
+ * demo database once and reseeds, so existing browsers pick up new demo data
+ * (personas, queues, board coverage) without manual resets.
+ */
+export const SEED_VERSION = 'v2';
+const SEED_VERSION_KEY = STORAGE_PREFIX + 'seed_version';
+
+function ensureSeedVersion(): void {
+  try {
+    if (localStorage.getItem(SEED_VERSION_KEY) !== SEED_VERSION) {
+      const doomed: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(STORAGE_PREFIX)) doomed.push(k);
+      }
+      doomed.forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem(SEED_VERSION_KEY, SEED_VERSION);
+    }
+  } catch {
+    // Storage unavailable: seeds are returned from memory defaults instead.
+  }
+}
+
+ensureSeedVersion();
+
+/** 6.1 "Reset demo data": restores every seed exactly, then reloads. */
+export function resetDemoData(): void {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith(STORAGE_PREFIX) || k === 'oja_active_cart')) doomed.push(k);
+    }
+    doomed.forEach((k) => localStorage.removeItem(k));
+  } catch {}
+  window.location.reload();
+}
 
 // Exported for the cross-tab logout listener in AuthContext.
 export const CURRENT_USER_STORAGE_KEY = STORAGE_PREFIX + 'current_user_id';
@@ -89,7 +140,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export const MockStorage = {
-  getUsers: (): UserProfile[] => loadOrSeed('users', SEED_USERS),
+  getUsers: (): UserProfile[] => loadOrSeed('users', [...SEED_USERS, ...EXTRA_USERS]),
   setUsers: (users: UserProfile[]) => save('users', users),
 
   getCurrentUserId: (): string | null => {
@@ -108,28 +159,28 @@ export const MockStorage = {
   },
   setCurrentUserId: (id: string | null) => save('current_user_id', id),
 
-  getListings: (): Listing[] => loadOrSeed('listings', SEED_LISTINGS),
+  getListings: (): Listing[] => loadOrSeed('listings', [...SEED_LISTINGS, ...EXTRA_LISTINGS]),
   setListings: (listings: Listing[]) => save('listings', listings),
 
-  getBusinesses: (): Business[] => loadOrSeed('businesses', SEED_BUSINESSES),
+  getBusinesses: (): Business[] => loadOrSeed('businesses', [...SEED_BUSINESSES, ...EXTRA_BUSINESSES]),
   setBusinesses: (businesses: Business[]) => save('businesses', businesses),
 
-  getOrders: (): Order[] => loadOrSeed('orders', SEED_ORDERS),
+  getOrders: (): Order[] => loadOrSeed('orders', [...SEED_ORDERS, ...EXTRA_ORDERS]),
   setOrders: (orders: Order[]) => save('orders', orders),
 
-  getReviews: (): Review[] => loadOrSeed('reviews', SEED_REVIEWS),
+  getReviews: (): Review[] => loadOrSeed('reviews', [...SEED_REVIEWS, ...EXTRA_REVIEWS]),
   setReviews: (reviews: Review[]) => save('reviews', reviews),
 
-  getReports: (): Report[] => loadOrSeed('reports', SEED_REPORTS),
+  getReports: (): Report[] => loadOrSeed('reports', [...SEED_REPORTS, ...EXTRA_REPORTS]),
   setReports: (reports: Report[]) => save('reports', reports),
 
-  getThreads: (): ChatThread[] => loadOrSeed('threads', SEED_CHAT_THREADS),
+  getThreads: (): ChatThread[] => loadOrSeed('threads', [...SEED_CHAT_THREADS, ...EXTRA_CHAT_THREADS]),
   setThreads: (threads: ChatThread[]) => save('threads', threads),
 
-  getMessages: (): ChatMessage[] => loadOrSeed('messages', SEED_CHAT_MESSAGES),
+  getMessages: (): ChatMessage[] => loadOrSeed('messages', [...SEED_CHAT_MESSAGES, ...EXTRA_CHAT_MESSAGES]),
   setMessages: (messages: ChatMessage[]) => save('messages', messages),
 
-  getNotifications: (): AppNotification[] => loadOrSeed('notifications', SEED_NOTIFICATIONS),
+  getNotifications: (): AppNotification[] => loadOrSeed('notifications', [...SEED_NOTIFICATIONS, ...EXTRA_NOTIFICATIONS]),
   setNotifications: (notifications: AppNotification[]) => save('notifications', notifications),
 
   getAuditLogs: (): AuditLogEntry[] => loadOrSeed('audit_logs', SEED_AUDIT_LOGS),
@@ -147,6 +198,6 @@ export const MockStorage = {
   getEmailOutbox: (): any[] => loadOrSeed('email_outbox', []),
   setEmailOutbox: (emails: any[]) => save('email_outbox', emails),
 
-  getFeedbacks: (): FeedbackItem[] => loadOrSeed('feedbacks', []),
+  getFeedbacks: (): FeedbackItem[] => loadOrSeed('feedbacks', EXTRA_FEEDBACKS),
   setFeedbacks: (items: FeedbackItem[]) => save('feedbacks', items),
 };

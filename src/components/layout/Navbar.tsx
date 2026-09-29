@@ -23,6 +23,7 @@ import { useCart } from '../../context/CartContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { IS_DEMO_MODE } from '../../config/appConfig';
 import { formatHallName } from '../../utils/formatHall';
+import { resetDemoData } from '../../data/mockStorage';
 
 interface NavbarProps {
   onOpenCart: () => void;
@@ -90,6 +91,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="hover:underline font-semibold text-amber-800 dark:text-amber-300"
             >
               Report issue or idea
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('Reset all demo data to the original seed? Your demo changes will be lost.')) {
+                  resetDemoData();
+                }
+              }}
+              className="hover:underline font-semibold text-amber-800 dark:text-amber-300"
+            >
+              Reset demo data
             </button>
             <button
               onClick={() => setShowRoleSwitcher((prev) => !prev)}
