@@ -1118,3 +1118,207 @@ SELECT cron.unschedule('oja-late-penalties') WHERE EXISTS (SELECT 1 FROM cron.jo
 SELECT cron.schedule('oja-late-penalties', '0 * * * *', 'SELECT public.sweep_late_penalties()');
 SELECT cron.unschedule('oja-late-alerts') WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'oja-late-alerts');
 SELECT cron.schedule('oja-late-alerts', '0 * * * *', 'SELECT public.sweep_late_alerts()');
+
+-- 11. PHASE-5 PORTAL ACTION RPCS (appended; sections 1-10 untouched)
+-- Why: sub_orders has SELECT-only RLS, so seller/agent/buyer writes must go
+-- through SECURITY DEFINER functions that re-check identity, role, and the
+-- H-04 legality map. Read-only reviewed here, NOT executed live.
+
+-- 11.1 Payout marking needs a narrow admin UPDATE policy (all other writes
+-- use the RPCs below).
+DROP POLICY IF EXISTS sub_orders_admin_update ON public.sub_orders;
+CREATE POLICY sub_orders_admin_update ON public.sub_orders FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IN ('super_admin', 'payment_verifier'))
+) WITH CHECK (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IN ('super_admin', 'payment_verifier'))
+);
+
+-- Payment verification, dispute handling, and cancellation update the parent
+-- order row, which buyers own. Admins acting on others' orders need this.
+DROP POLICY IF EXISTS orders_admin_update ON public.orders;
+CREATE POLICY orders_admin_update ON public.orders FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+) WITH CHECK (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+
+-- 11.2 Seller accepts a sub-order and sets the delivery clock.
+CREATE OR REPLACE FUNCTION public.seller_accept_sub_order(
+    p_sub_order_id UUID,
+    p_actor_id UUID,
+    p_agreed_hours INTEGER
+) RETURNS VOID AS $$
+DECLARE
+    v_sub RECORD;
+    v_actor RECORD;
+BEGIN
+    SELECT * INTO v_sub FROM public.sub_orders WHERE id = p_sub_order_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Sub-order % not found', p_sub_order_id; END IF;
+    SELECT * INTO v_actor FROM public.profiles WHERE id = p_actor_id;
+    IF v_actor.id != v_sub.seller_id AND v_actor.admin_level IS DISTINCT FROM 'super_admin' THEN
+        RAISE EXCEPTION 'Only the assigned seller can accept this sub-order.';
+    END IF;
+    IF v_sub.status != 'payment_confirmed' THEN
+        RAISE EXCEPTION 'Illegal state transition from "%" to "seller_accepted".', v_sub.status;
+    END IF;
+    IF p_agreed_hours IS NULL OR p_agreed_hours <= 0 THEN
+        RAISE EXCEPTION 'Agreed delivery window must be a positive number of hours.';
+    END IF;
+    UPDATE public.sub_orders
+    SET status = 'seller_accepted',
+        seller_accepted_at = now(),
+        delivery_time_agreed_hours = p_agreed_hours,
+        status_timeline = status_timeline || jsonb_build_object('state', 'seller_accepted', 'timestamp', now(), 'note', 'Seller accepted. Clock started.'),
+        updated_at = now()
+    WHERE id = p_sub_order_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 11.3 Agent atomically claims a ready sub-order. Exactly one claimant wins;
+-- losers get a clear error. Gender/hall eligibility is enforced here.
+CREATE OR REPLACE FUNCTION public.agent_claim_sub_order(
+    p_sub_order_id UUID,
+    p_agent_id UUID
+) RETURNS VOID AS $$
+DECLARE
+    v_sub RECORD;
+    v_agent RECORD;
+    v_hall_gender TEXT;
+BEGIN
+    SELECT * INTO v_agent FROM public.profiles WHERE id = p_agent_id;
+    IF NOT FOUND OR NOT ('Delivery Agent' = ANY(v_agent.badges)) THEN
+        RAISE EXCEPTION 'Only registered delivery agents can claim deliveries.';
+    END IF;
+    SELECT so.* INTO v_sub FROM public.sub_orders so WHERE so.id = p_sub_order_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Sub-order % not found', p_sub_order_id; END IF;
+    SELECT h.gender::TEXT INTO v_hall_gender
+    FROM public.profiles se JOIN public.halls h ON h.id = se.hall_id
+    WHERE se.id = v_sub.seller_id;
+    IF v_hall_gender IS NOT NULL AND v_hall_gender != 'mixed' AND v_hall_gender != v_agent.gender::TEXT THEN
+        RAISE EXCEPTION 'This pickup hall is restricted to % agents.', v_hall_gender;
+    END IF;
+    UPDATE public.sub_orders
+    SET agent_id = p_agent_id,
+        status = 'agent_assigned',
+        status_timeline = status_timeline || jsonb_build_object('state', 'agent_assigned', 'timestamp', now(), 'note', 'Delivery agent claimed the run'),
+        updated_at = now()
+    WHERE id = p_sub_order_id AND agent_id IS NULL AND status = 'ready';
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'This delivery was just claimed by another agent.';
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 11.4 Agent completes handover with the buyer's 4-digit code.
+CREATE OR REPLACE FUNCTION public.delivery_complete_with_code(
+    p_sub_order_id UUID,
+    p_actor_id UUID,
+    p_code TEXT
+) RETURNS VOID AS $$
+DECLARE
+    v_sub RECORD;
+    v_actor RECORD;
+    v_code TEXT;
+BEGIN
+    SELECT * INTO v_sub FROM public.sub_orders WHERE id = p_sub_order_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Sub-order % not found', p_sub_order_id; END IF;
+    SELECT * INTO v_actor FROM public.profiles WHERE id = p_actor_id;
+    IF v_actor.id IS DISTINCT FROM v_sub.agent_id
+       AND v_actor.admin_level IS DISTINCT FROM 'super_admin'
+       AND v_actor.admin_level IS DISTINCT FROM 'logistics_admin' THEN
+        RAISE EXCEPTION 'Only the assigned agent can complete this handover.';
+    END IF;
+    IF v_sub.status != 'out_for_delivery' THEN
+        RAISE EXCEPTION 'Illegal state transition from "%" to "delivered".', v_sub.status;
+    END IF;
+    SELECT delivery_code INTO v_code FROM public.orders WHERE id = v_sub.order_id;
+    IF v_code IS NULL OR btrim(v_code) != btrim(p_code) THEN
+        RAISE EXCEPTION 'Delivery code mismatch.';
+    END IF;
+    UPDATE public.sub_orders
+    SET status = 'delivered',
+        delivered_at = now(),
+        status_timeline = status_timeline || jsonb_build_object('state', 'delivered', 'timestamp', now(), 'note', 'Delivery code validated upon handover'),
+        updated_at = now()
+    WHERE id = p_sub_order_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 11.5 Restock helper for rejection/cancellation (SECURITY DEFINER so buyers
+-- rolling back other sellers' listings do not need direct UPDATE rights).
+CREATE OR REPLACE FUNCTION public.restock_sub_order(p_sub_order_id UUID)
+RETURNS VOID AS $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN SELECT listing_id, quantity FROM public.order_items WHERE sub_order_id = p_sub_order_id LOOP
+        UPDATE public.listings
+        SET stock = stock + r.quantity,
+            status = CASE WHEN status = 'sold_out' THEN 'active'::listing_status ELSE status END
+        WHERE id = r.listing_id;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 11.5b Delivery-promise extension by a Logistics admin (notifies buyer via
+-- the notifications insert below).
+CREATE OR REPLACE FUNCTION public.extend_delivery_promise(
+    p_sub_order_id UUID,
+    p_actor_id UUID,
+    p_additional_hours INTEGER,
+    p_reason TEXT
+) RETURNS VOID AS $$
+DECLARE
+    v_actor RECORD;
+    v_sub RECORD;
+    v_buyer UUID;
+BEGIN
+    SELECT * INTO v_actor FROM public.profiles WHERE id = p_actor_id;
+    IF v_actor.admin_level IS DISTINCT FROM 'super_admin'
+       AND v_actor.admin_level IS DISTINCT FROM 'logistics_admin' THEN
+        RAISE EXCEPTION 'Only Logistics admins or Super admins can extend the delivery promise.';
+    END IF;
+    SELECT * INTO v_sub FROM public.sub_orders WHERE id = p_sub_order_id;
+    IF NOT FOUND THEN RAISE EXCEPTION 'Sub-order % not found', p_sub_order_id; END IF;
+    IF p_additional_hours IS NULL OR p_additional_hours <= 0 THEN
+        RAISE EXCEPTION 'Extension must be a positive number of hours.';
+    END IF;
+    UPDATE public.sub_orders
+    SET delivery_time_agreed_hours = COALESCE(delivery_time_agreed_hours, 48) + p_additional_hours,
+        status_timeline = status_timeline || jsonb_build_object('state', status, 'timestamp', now(), 'note', 'Delivery window extended by ' || p_additional_hours || 'h: ' || COALESCE(p_reason, '')),
+        updated_at = now()
+    WHERE id = p_sub_order_id;
+    SELECT buyer_id INTO v_buyer FROM public.orders WHERE id = v_sub.order_id;
+    INSERT INTO public.notifications (user_id, title, message, type, link_id)
+    VALUES (v_buyer, 'Delivery Schedule Update',
+            'The delivery promise for your order was extended by ' || p_additional_hours || 'h. Note: ' || COALESCE(p_reason, ''),
+            'delivery', v_sub.order_id::TEXT);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 11.6 Delivery board: ready, unclaimed sub-orders eligible for this agent.
+CREATE OR REPLACE FUNCTION public.available_deliveries(p_agent_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_agent RECORD;
+    result JSONB := '[]'::jsonb;
+BEGIN
+    SELECT * INTO v_agent FROM public.profiles WHERE id = p_agent_id;
+    IF NOT FOUND THEN RETURN result; END IF;
+    SELECT COALESCE(jsonb_agg(t), '[]'::jsonb) INTO result FROM (
+        SELECT so.id AS sub_order_id, so.order_id, o.order_number, o.payment_mode,
+               se.hall_id AS seller_hall_id, o.delivery_hall_id, o.delivery_room,
+               so.subtotal, so.delivery_fee, so.items_count, so.created_at,
+               (SELECT COALESCE(jsonb_agg(jsonb_build_object('title', i.title, 'quantity', i.quantity)), '[]'::jsonb)
+                FROM public.order_items i WHERE i.sub_order_id = so.id) AS items
+        FROM public.sub_orders so
+        JOIN public.orders o ON o.id = so.order_id
+        JOIN public.profiles se ON se.id = so.seller_id
+        JOIN public.halls h ON h.id = se.hall_id
+        WHERE so.status = 'ready' AND so.agent_id IS NULL
+          AND (h.gender = 'mixed' OR h.gender::TEXT = v_agent.gender::TEXT)
+        ORDER BY so.created_at ASC
+    ) t;
+    RETURN result;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
