@@ -11,6 +11,7 @@ import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
 import { Order } from '../../types';
 import { repo } from '../../data';
+import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -113,11 +114,17 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         key={item.listing.id}
                         className="p-3 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center gap-3 text-xs"
                       >
-                        <img
-                          src={item.listing.images[0] || 'https://placehold.co/100x100/png'}
-                          alt=""
-                          className="w-14 h-14 rounded-lg object-cover bg-neutral-200 shrink-0"
-                        />
+                        {item.listing.images[0] ? (
+                          <img
+                            src={item.listing.images[0]}
+                            alt=""
+                            className="w-14 h-14 rounded-lg object-cover bg-neutral-200 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0">
+                            <ListingImagePlaceholder categoryId={item.listing.categoryId} compact />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-[var(--color-text-main)] truncate">{item.listing.title}</h4>
                           <p className="text-xs font-mono font-bold text-[var(--color-text-main)] mt-0.5">

@@ -9,6 +9,7 @@ import { Listing, UserProfile } from '../../types';
 import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
 import { useCart } from '../../context/CartContext';
+import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface ListingCardProps {
   listing: Listing;
@@ -39,15 +40,19 @@ export const ListingCard: React.FC<ListingCardProps> = ({
         isOutOfStock ? 'opacity-70' : ''
       }`}
     >
-      {/* Product Image Slot */}
+      {/* Product Image Slot: shared placeholder keeps zero-photo cards stable */}
       <div className="relative aspect-4/3 w-full bg-[var(--color-surface-subtle)] overflow-hidden">
-        <img
-          src={listing.images[0] || 'https://placehold.co/600x450/png?text=Oja+Listing'}
-          alt={listing.title}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-103"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-        />
+        {listing.images[0] ? (
+          <img
+            src={listing.images[0]}
+            alt={listing.title}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-103"
+            referrerPolicy="no-referrer"
+            loading="lazy"
+          />
+        ) : (
+          <ListingImagePlaceholder categoryId={listing.categoryId} title={listing.title} />
+        )}
 
         {isOutOfStock ? (
           <div className="absolute inset-0 bg-neutral-900/60 backdrop-blur-xs flex items-center justify-center">

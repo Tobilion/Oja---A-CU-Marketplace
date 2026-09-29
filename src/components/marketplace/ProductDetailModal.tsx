@@ -24,6 +24,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
+import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface ProductDetailModalProps {
   listing: Listing;
@@ -136,12 +137,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* Gallery Column */}
           <div className="space-y-4">
             <div className="relative aspect-4/3 w-full bg-[var(--color-surface-subtle)] rounded-xl overflow-hidden border border-[var(--color-border)]">
-              <img
-                src={listing.images[activeImageIdx] || 'https://placehold.co/600x450/png?text=Oja+Listing'}
-                alt={listing.title}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+              {listing.images[activeImageIdx] ? (
+                <img
+                  src={listing.images[activeImageIdx]}
+                  alt={listing.title}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <ListingImagePlaceholder categoryId={listing.categoryId} title={listing.title} />
+              )}
               {listing.images.length > 1 && (
                 <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 flex justify-between pointer-events-none">
                   <button

@@ -10,6 +10,7 @@ import { repo } from '../../data';
 import { useAuth } from '../../context/AuthContext';
 import { formatNaira } from '../../utils/money';
 import { useNotifications } from '../../context/NotificationContext';
+import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface RecycleBinModalProps {
   onClose: () => void;
@@ -95,11 +96,17 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
                   className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <img
-                      src={item.images[0] || 'https://placehold.co/100x100/png'}
-                      alt=""
-                      className="w-12 h-12 rounded-lg object-cover bg-neutral-200 shrink-0"
-                    />
+                    {item.images[0] ? (
+                      <img
+                        src={item.images[0]}
+                        alt=""
+                        className="w-12 h-12 rounded-lg object-cover bg-neutral-200 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0">
+                        <ListingImagePlaceholder categoryId={item.categoryId} compact />
+                      </div>
+                    )}
                     <div className="min-w-0">
                       <h4 className="font-semibold text-[var(--color-text-main)] truncate">{item.title}</h4>
                       <p className="font-mono text-xs text-[var(--color-text-muted)]">{formatNaira(item.price)}</p>

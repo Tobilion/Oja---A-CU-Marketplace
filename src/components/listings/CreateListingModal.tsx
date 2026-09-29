@@ -8,8 +8,10 @@ import { X, Upload, AlertTriangle, Sparkles, Check, Image as ImageIcon } from 'l
 import { Category, ListingCondition, ListingPostAs, Business } from '../../types';
 import { predictCategoryFromTitle, checkBannedContent } from '../../utils/taxonomy';
 import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
+import { repo } from '../../data';
+import { REQUIRE_LISTING_PHOTOS } from '../../config/appConfig';
+import { validatePhotoCount } from '../../utils/listingPhotos';
 
 interface CreateListingModalProps {
   categories: Category[];
@@ -99,9 +101,11 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
       return;
     }
 
-    // 2. Photo validation (Services may opt out, other categories need at least 1)
-    if (categoryId !== 'cat_services' && images.length === 0) {
-      setValidationError('Please upload at least 1 clear photo of the item.');
+    // 2. Photo validation: BUG-2 photos are optional (REQUIRE_LISTING_PHOTOS
+    // is false). The 1-to-6 limit still applies when photos are added.
+    const photoError = validatePhotoCount(images);
+    if (photoError) {
+      setValidationError(photoError);
       return;
     }
 
@@ -131,7 +135,7 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
         condition,
         price: numPrice,
         stock: numStock,
-        images: images.length > 0 ? images : ['https://placehold.co/600x450/png?text=Service+Offered'],
+        images,
         sellerId: currentUser.id,
         businessId: postAs === 'business' || postAs === 'both' ? selectedBusinessId : undefined,
         postAs,
@@ -348,10 +352,10 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
             </div>
           </div>
 
-          {/* Photo Upload (1 to 6) */}
+          {/* Photo Upload (optional, 0 to 6) */}
           <div>
             <label className="block font-semibold text-[var(--color-text-main)] mb-1">
-              Photos (Up to 6) {categoryId !== 'cat_services' && <span className="text-red-500">*</span>}
+              Photos (Optional, Up to 6)
             </label>
             <div className="flex flex-wrap gap-2 items-center">
               {images.map((img, i) => (
