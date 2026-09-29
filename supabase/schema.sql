@@ -688,3 +688,128 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.app_settings (id, oja_bank_name, oja_account_number, oja_account_name)
 VALUES (1, 'Kuda Microfinance Bank', '2001928374', 'Oja Escrow Operations')
 ON CONFLICT (id) DO NOTHING;
+
+-- 8. PHASE-1 RLS HARDENING (appended; does not alter sections 1-7)
+-- Why this section exists: several tables had RLS enabled with no policies
+-- (default-deny, breaking reads) or no RLS at all (open to anon write).
+-- Sub-orders have SELECT only on purpose: all writes go through the
+-- SECURITY DEFINER RPCs (place_order, advance_order_status, apply_late_penalty),
+-- which re-check caller identity and role server-side.
+
+-- 8.1 Enable RLS where it was missing
+ALTER TABLE public.halls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+-- 8.2 Halls & categories: public read, Super admin write
+DROP POLICY IF EXISTS halls_public_read ON public.halls;
+CREATE POLICY halls_public_read ON public.halls FOR SELECT USING (true);
+DROP POLICY IF EXISTS halls_admin_write ON public.halls;
+CREATE POLICY halls_admin_write ON public.halls FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level = 'super_admin')
+);
+
+DROP POLICY IF EXISTS categories_public_read ON public.categories;
+CREATE POLICY categories_public_read ON public.categories FOR SELECT USING (true);
+
+-- 8.3 App settings: any signed-in user may read (bank details are shown at
+-- checkout); only Super admins may change fees, penalties, bank details.
+DROP POLICY IF EXISTS settings_auth_read ON public.app_settings;
+CREATE POLICY settings_auth_read ON public.app_settings FOR SELECT USING (auth.uid() IS NOT NULL);
+DROP POLICY IF EXISTS settings_super_admin_write ON public.app_settings;
+CREATE POLICY settings_super_admin_write ON public.app_settings FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level = 'super_admin')
+);
+
+-- 8.4 Profiles: allow a new user to insert ONLY their own row.
+-- The school-email domain CHECK constraint on profiles plus the Auth Hook in
+-- 8.10 enforce @stu.cu.edu.ng server-side; this policy only scopes the row.
+DROP POLICY IF EXISTS profiles_insert_own ON public.profiles;
+CREATE POLICY profiles_insert_own ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- 8.5 Businesses: public storefronts need approved-business reads.
+DROP POLICY IF EXISTS businesses_public_read ON public.businesses;
+CREATE POLICY businesses_public_read ON public.businesses FOR SELECT USING (
+  status = 'approved' OR owner_id = auth.uid() OR
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+DROP POLICY IF EXISTS businesses_owner_insert ON public.businesses;
+CREATE POLICY businesses_owner_insert ON public.businesses FOR INSERT WITH CHECK (owner_id = auth.uid());
+DROP POLICY IF EXISTS businesses_owner_update ON public.businesses;
+CREATE POLICY businesses_owner_update ON public.businesses FOR UPDATE USING (
+  owner_id = auth.uid() OR
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+
+-- 8.6 Listings: sellers and Moderator+ may delete (recycle-bin flow deletes).
+DROP POLICY IF EXISTS listings_owner_delete ON public.listings;
+CREATE POLICY listings_owner_delete ON public.listings FOR DELETE USING (
+  seller_id = auth.uid() OR
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IN ('super_admin', 'moderator'))
+);
+
+-- 8.7 Orders: buyer inserts and updates only their own rows.
+-- Status/payment transitions are validated inside advance_order_status and
+-- verifyPayment RPCs, never by direct column writes alone.
+DROP POLICY IF EXISTS orders_buyer_insert ON public.orders;
+CREATE POLICY orders_buyer_insert ON public.orders FOR INSERT WITH CHECK (buyer_id = auth.uid());
+DROP POLICY IF EXISTS orders_buyer_update ON public.orders;
+CREATE POLICY orders_buyer_update ON public.orders FOR UPDATE USING (buyer_id = auth.uid());
+
+-- 8.8 Reviews: public read; signed-in insert (the trg_validate_review_eligibility
+-- trigger rejects reviewers without a completed order for the listing).
+DROP POLICY IF EXISTS reviews_public_read ON public.reviews;
+CREATE POLICY reviews_public_read ON public.reviews FOR SELECT USING (true);
+DROP POLICY IF EXISTS reviews_verified_insert ON public.reviews;
+CREATE POLICY reviews_verified_insert ON public.reviews FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+-- 8.9 Reports: reporter inserts; Moderator+ reads and resolves.
+DROP POLICY IF EXISTS reports_reporter_insert ON public.reports;
+CREATE POLICY reports_reporter_insert ON public.reports FOR INSERT WITH CHECK (reporter_id = auth.uid());
+DROP POLICY IF EXISTS reports_admin_read ON public.reports;
+CREATE POLICY reports_admin_read ON public.reports FOR SELECT USING (
+  reporter_id = auth.uid() OR
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+DROP POLICY IF EXISTS reports_admin_update ON public.reports;
+CREATE POLICY reports_admin_update ON public.reports FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+
+-- 8.10 Chat: participants may write; participants and admins on reported
+-- threads may read (read policies already exist in section 5).
+DROP POLICY IF EXISTS chat_threads_participant_insert ON public.chat_threads;
+CREATE POLICY chat_threads_participant_insert ON public.chat_threads FOR INSERT WITH CHECK (auth.uid() = ANY(participant_ids));
+DROP POLICY IF EXISTS chat_messages_participant_insert ON public.chat_messages;
+CREATE POLICY chat_messages_participant_insert ON public.chat_messages FOR INSERT WITH CHECK (sender_id = auth.uid());
+
+-- 8.11 Notifications: owner reads and marks read; inserts come from RPCs or
+-- service-role notify() calls, so client insert is scoped to self-notify only.
+DROP POLICY IF EXISTS notifications_owner_read ON public.notifications;
+CREATE POLICY notifications_owner_read ON public.notifications FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS notifications_owner_update ON public.notifications;
+CREATE POLICY notifications_owner_update ON public.notifications FOR UPDATE USING (user_id = auth.uid());
+
+-- 8.12 Audit logs: admins read; any signed-in admin action may append.
+-- Immutability (no UPDATE/DELETE policy) keeps the trail append-only.
+DROP POLICY IF EXISTS audit_admin_read ON public.audit_logs;
+CREATE POLICY audit_admin_read ON public.audit_logs FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+DROP POLICY IF EXISTS audit_admin_insert ON public.audit_logs;
+CREATE POLICY audit_admin_insert ON public.audit_logs FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+
+-- 8.13 School-email enforcement (server-side).
+-- The earlier claim that the Supabase dashboard Google provider can restrict
+-- domains is wrong: Google OAuth has no domain-restriction setting that
+-- Supabase enforces. Enforcement must be ALL of:
+-- (a) the profiles.school_email CHECK constraint (section 3, always on);
+-- (b) a Supabase Auth Hook (Dashboard > Auth > Hooks > Custom Access Token or
+--     Send-email hook is NOT enough; use the "MFA/Pre-signup" style Postgres
+--     hook) calling public.validate_cu_user_auth() so unverified or
+--     non-@stu.cu.edu.ng Google identities are rejected before a session exists;
+-- (c) client OAuth hd hint (already sent) for UX only, never trusted.
+-- Triggers on auth.users cannot be created from the SQL editor, so (b) is a
+-- manual dashboard step documented in GO_LIVE.md (Phase 7).
