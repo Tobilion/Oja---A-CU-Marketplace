@@ -27,6 +27,7 @@ import { SellerPortalModal } from './components/seller/SellerPortalModal';
 import { AgentPortalModal } from './components/delivery/AgentPortalModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { ReviewModal } from './components/marketplace/ReviewModal';
+import { Footer } from './components/layout/Footer';
 import { Listing, Category, Hall, Business, Order, UserProfile } from './types';
 import { repo, isSupabaseConfigMissing } from './data';
 import { AlertOctagon, Terminal } from 'lucide-react';
@@ -424,6 +425,8 @@ function AppContent() {
           onSubmitted={loadMarketplaceData}
         />
       )}
+
+      <Footer />
     </div>
   );
 }
