@@ -22,7 +22,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
-import { Order, UserProfile, Business, Report, AuditLogEntry, Hall, Listing } from '../../types';
+import { Order, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge } from '../../types';
+import { AdminUserUpdates } from '../../data';
+import { useListQuery } from '../../hooks/useListQuery';
+import { ListControls } from '../common/ListControls';
 import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
 import { useNotifications } from '../../context/NotificationContext';
@@ -69,6 +72,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     loadData();
   }, []);
+
+  // H-02/H-03: shared search, sort, and pagination over the user directory.
+  const userQuery = useListQuery<UserProfile>({
+    items: allUsers,
+    searchText: (u) =>
+      `${u.fullName} ${u.username} ${u.schoolEmail} ${u.personalEmail} ${(u.badges || []).join(' ')} ${u.adminLevel || ''}`,
+    sortOptions: [
+      { id: 'name', label: 'Name A-Z', compare: (a, b) => a.fullName.localeCompare(b.fullName) },
+      {
+        id: 'newest',
+        label: 'Newest first',
+        compare: (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      },
+      {
+        id: 'suspended',
+        label: 'Suspended first',
+        compare: (a, b) => Number(b.isSuspended) - Number(a.isSuspended),
+      },
+    ],
+    pageSize: 8,
+  });
+
+  const ALL_BADGES: UserBadge[] = ['Member', 'Seller', 'Verified Seller', 'Business Owner', 'Delivery Agent', 'Admin'];
+
+  // H-03: every privileged user change flows through adminUpdateUser (guards
+  // + audit) instead of the self-profile path, which strips privileged fields.
+  const handleAdminUserUpdate = async (targetId: string, updates: AdminUserUpdates) => {
+    if (!currentUser) return;
+    try {
+      await repo.adminUpdateUser(currentUser.id, targetId, updates);
+      await refreshUser();
+      await loadData();
+      showToast('User updated. Audit entry recorded.', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'User update failed', 'error');
+    }
+  };
+
+  const handleAdminLevelChange = async (u: UserProfile, level: string) => {
+    const adminLevel = (level === 'none' ? null : level) as UserProfile['adminLevel'];
+    const badges: UserBadge[] = adminLevel
+      ? u.badges.includes('Admin')
+        ? u.badges
+        : [...u.badges, 'Admin' as UserBadge]
+      : u.badges.filter((b) => b !== 'Admin');
+    await handleAdminUserUpdate(u.id, { adminLevel, badges });
+  };
 
   // Work Queues computation
   const pendingPayments = orders.filter((o) => o.paymentStatus === 'pending_verification');
@@ -599,42 +649,125 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 8. USERS LIST & ROLES */}
           {activeTab === 'users' && (
             <div className="space-y-3">
-              {allUsers.map((u) => (
-                <div
-                  key={u.id}
-                  className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-[var(--color-text-main)]">{u.fullName}</span>
-                      <span className="text-[11px] font-mono text-[var(--color-text-muted)]">@{u.username}</span>
-                      {u.badges.map((b) => (
-                        <span key={b} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)]">
-                          {b}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                      {u.schoolEmail} · {formatHallName(u.hallId)} ({u.roomNumber})
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() =>
-                        repo.updateUserProfile(u.id, {
-                          badges: u.badges.includes('Verified Seller')
-                            ? u.badges.filter((b) => b !== 'Verified Seller')
-                            : [...u.badges, 'Verified Seller'],
-                        }).then(loadData)
-                      }
-                      className="px-2.5 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-surface)]"
+              <ListControls
+                query={userQuery.query}
+                onQueryChange={userQuery.setQuery}
+                searchPlaceholder="Search name, username, email, badge..."
+                sortId={userQuery.sortId}
+                onSortChange={userQuery.setSortId}
+                sortOptions={userQuery.sortOptions}
+                page={userQuery.page}
+                totalPages={userQuery.totalPages}
+                onPageChange={userQuery.setPage}
+                total={userQuery.total}
+                itemLabel="users"
+              />
+              {userQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">No users match this search.</p>
+              ) : (
+                userQuery.pageItems.map((u) => {
+                  const isSelf = u.id === currentUser?.id;
+                  return (
+                    <div
+                      key={u.id}
+                      className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex flex-col gap-3"
                     >
-                      {u.badges.includes('Verified Seller') ? 'Remove Verified' : 'Grant Verified'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-[var(--color-text-main)]">{u.fullName}</span>
+                            <span className="text-[11px] font-mono text-[var(--color-text-muted)]">@{u.username}</span>
+                            {isSelf && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 font-semibold">
+                                You
+                              </span>
+                            )}
+                            {u.isSuspended && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 font-semibold">
+                                Suspended
+                              </span>
+                            )}
+                            {u.adminLevel && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-semibold">
+                                {u.adminLevel.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+                            {u.schoolEmail} · {formatHallName(u.hallId)} ({u.roomNumber})
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <label className="text-[11px] text-[var(--color-text-muted)]">
+                            Level{' '}
+                            <select
+                              value={u.adminLevel || 'none'}
+                              disabled={isSelf}
+                              onChange={(e) => handleAdminLevelChange(u, e.target.value)}
+                              className="ml-1 px-2 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-xs text-[var(--color-text-main)] disabled:opacity-40"
+                            >
+                              <option value="none">None</option>
+                              <option value="moderator">Moderator</option>
+                              <option value="payment_verifier">Payment verifier</option>
+                              <option value="logistics_admin">Logistics admin</option>
+                              <option value="super_admin">Super admin</option>
+                            </select>
+                          </label>
+                          <button
+                            disabled={isSelf}
+                            onClick={() => {
+                              if (!u.isSuspended && !confirm(`Suspend ${u.fullName}? They lose buying and selling access until unsuspended.`)) return;
+                              handleAdminUserUpdate(u.id, { isSuspended: !u.isSuspended });
+                            }}
+                            className="px-2.5 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-surface)] disabled:opacity-40"
+                          >
+                            {u.isSuspended ? 'Unsuspend' : 'Suspend'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {ALL_BADGES.map((b) => {
+                          const has = u.badges.includes(b);
+                          return (
+                            <button
+                              key={b}
+                              disabled={isSelf}
+                              onClick={() =>
+                                handleAdminUserUpdate(u.id, {
+                                  badges: has ? u.badges.filter((x) => x !== b) : [...u.badges, b],
+                                })
+                              }
+                              title={has ? `Revoke ${b}` : `Grant ${b}`}
+                              className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                                has
+                                  ? 'bg-[var(--color-brand-primary)]/10 text-[var(--color-brand-primary)] border-[var(--color-brand-primary)]/30 font-semibold'
+                                  : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-[var(--color-text-main)]'
+                              }`}
+                            >
+                              {has ? `✓ ${b}` : `+ ${b}`}
+                            </button>
+                          );
+                        })}
+                        {u.sellerApplicationStatus === 'pending' && (
+                          <button
+                            onClick={() => handleAdminUserUpdate(u.id, { isSellerApproved: true })}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold"
+                          >
+                            Approve seller application
+                          </button>
+                        )}
+                      </div>
+                      {isSelf && (
+                        <p className="text-[11px] text-[var(--color-text-muted)]">
+                          Self-actions are disabled: you cannot change your own role, badges, or suspension.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
 
