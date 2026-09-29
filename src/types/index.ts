@@ -36,7 +36,8 @@ export interface UserProfile {
   hallId: string;
   roomNumber: string;
   gender: Gender;
-  telegramHandle: string; // required e.g. "@tobiloba"
+  telegramHandle: string; // optional public handle, e.g. "@janedoe" (may be '')
+  phoneNumber?: string; // required at sign-up: Nigerian mobile for order coordination
   matricNumber?: string;
   regNumber?: string;
   bio?: string;

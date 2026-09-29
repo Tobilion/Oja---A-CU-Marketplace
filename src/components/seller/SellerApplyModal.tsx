@@ -129,7 +129,7 @@ export const SellerApplyModal: React.FC<SellerApplyModalProps> = ({
               type="text"
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
-              placeholder="e.g. Tobiloba Jagun"
+              placeholder="e.g. Jane Doe"
               className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
             />
           </div>

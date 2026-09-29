@@ -337,7 +337,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         type="text"
                         value={senderAccountName}
                         onChange={(e) => setSenderAccountName(e.target.value)}
-                        placeholder="e.g. Samuel Ayomide"
+                        placeholder="e.g. Jane Doe"
                         className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                       />
                     </div>

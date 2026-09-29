@@ -148,6 +148,7 @@ export class SupabaseRepository implements Repository {
     if (updates.regNumber !== undefined) payload.reg_number = updates.regNumber;
     if (updates.personalEmail !== undefined) payload.personal_email = updates.personalEmail;
     if (updates.bankDetails !== undefined) payload.bank_details = updates.bankDetails;
+    if (updates.phoneNumber !== undefined) payload.phone_number = updates.phoneNumber;
 
     const { data, error } = await this.client.from('profiles').update(payload).eq('id', id).select().single();
     if (error) throw error;
@@ -306,7 +307,9 @@ export class SupabaseRepository implements Repository {
       hall_id: data.hallId,
       room_number: data.roomNumber || '',
       gender: data.gender || 'male',
-      telegram_handle: data.telegramHandle || '',
+      telegram_handle: (data.telegramHandle || '').trim(),
+      phone_number: (data.phoneNumber || '').replace(/[\s-]/g, ''),
+      matric_number: (data.matricNumber || '').trim() || null,
     });
     if (profileError) throw profileError;
     const profile = await this.getUserById(authData.user.id);
@@ -1058,6 +1061,7 @@ export class SupabaseRepository implements Repository {
       roomNumber: row.room_number,
       gender: row.gender,
       telegramHandle: row.telegram_handle,
+      phoneNumber: row.phone_number || undefined,
       matricNumber: row.matric_number,
       regNumber: row.reg_number,
       bio: row.bio,

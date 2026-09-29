@@ -9,6 +9,7 @@ import { Hall, Gender } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { IS_DEMO_MODE } from '../../config/appConfig';
+import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
 import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface AuthModalProps {
@@ -29,6 +30,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
   const [hallId, setHallId] = useState(halls[0]?.id || 'hall_peter');
   const [roomNumber, setRoomNumber] = useState('');
   const [telegramHandle, setTelegramHandle] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [matricNumber, setMatricNumber] = useState('');
   const [applyAsSeller, setApplyAsSeller] = useState(false);
   const [bankName, setBankName] = useState('Guaranty Trust Bank (GTB)');
@@ -89,8 +91,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
       setErrorMsg('Covenant school email must end in @stu.cu.edu.ng');
       return;
     }
-    if (!telegramHandle.trim()) {
-      setErrorMsg('Telegram handle is required for order coordination.');
+    if (!isValidNigerianPhone(phoneNumber)) {
+      setErrorMsg('Enter a valid 11-digit Nigerian phone number (e.g. 08031234567).');
+      return;
+    }
+    if (!matricNumber.trim()) {
+      setErrorMsg('Matric number is required.');
       return;
     }
     if (!roomNumber.trim()) {
@@ -109,7 +115,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
         roomNumber: roomNumber.trim(),
         gender,
         telegramHandle: telegramHandle.trim(),
-        matricNumber: matricNumber.trim() || undefined,
+        phoneNumber: normalizeNigerianPhone(phoneNumber),
+        matricNumber: matricNumber.trim(),
         sellerApplicationStatus: applyAsSeller ? 'pending' : 'none',
         bankDetails: applyAsSeller
           ? {
@@ -188,7 +195,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                   type="email"
                   value={schoolEmail}
                   onChange={(e) => setSchoolEmail(e.target.value)}
-                  placeholder="e.g. ejagun.2401221@stu.cu.edu.ng"
+                  placeholder="e.g. jane.doe@stu.cu.edu.ng"
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                 />
                 <button
@@ -216,7 +223,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                     type="email"
                     value={personalEmail}
                     onChange={(e) => setPersonalEmail(e.target.value)}
-                    placeholder="tobilobajagun@gmail.com"
+                    placeholder="you@gmail.com"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
                   />
                 </div>
@@ -251,7 +258,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Tobiloba Jagun"
+                    placeholder="Jane Doe"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                   />
                 </div>
@@ -262,7 +269,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    placeholder="tobilion"
+                    placeholder="janedoe"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs font-mono"
                   />
                 </div>
@@ -289,7 +296,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                   required
                   value={personalEmail}
                   onChange={(e) => setPersonalEmail(e.target.value)}
-                  placeholder="tobilobajagun@gmail.com"
+                  placeholder="jane.doe@gmail.com"
                   className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                 />
               </div>
@@ -327,7 +334,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                     required
                     value={roomNumber}
                     onChange={(e) => setRoomNumber(e.target.value)}
-                    placeholder="C-314"
+                    placeholder="C-101"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                   />
                 </div>
@@ -335,26 +342,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Telegram Handle *</label>
+                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Phone Number *</label>
                   <input
-                    type="text"
+                    type="tel"
                     required
-                    value={telegramHandle}
-                    onChange={(e) => setTelegramHandle(e.target.value)}
-                    placeholder="@tobiloba"
-                    className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="08031234567"
+                    className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Matric No (Optional)</label>
+                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Telegram (Optional)</label>
                   <input
                     type="text"
-                    value={matricNumber}
-                    onChange={(e) => setMatricNumber(e.target.value)}
-                    placeholder="22CK031900"
+                    value={telegramHandle}
+                    onChange={(e) => setTelegramHandle(e.target.value)}
+                    placeholder="@janedoe"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Matric Number *</label>
+                <input
+                  type="text"
+                  required
+                  value={matricNumber}
+                  onChange={(e) => setMatricNumber(e.target.value)}
+                  placeholder="22CK000000"
+                  className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs font-mono"
+                />
               </div>
 
               {/* Optional Seller Application */}

@@ -35,6 +35,7 @@ import { VALID_ORDER_TRANSITIONS, validateOrderTransition, deriveOrderActorRole 
 import { FOUNDING_SUPER_ADMIN_EMAILS } from '../config/appConfig';
 import { isOnlyDeliveryAgentDiff } from '../utils/adminGuards';
 import { logUserAction } from '../utils/feedback';
+import { isValidNigerianPhone, normalizeNigerianPhone } from '../utils/phone';
 
 export class MockRepository implements Repository {
   readonly isMock = true;
@@ -85,6 +86,7 @@ export class MockRepository implements Repository {
       avatarUrl: updates.avatarUrl,
       personalEmail: updates.personalEmail,
       bankDetails: updates.bankDetails,
+      phoneNumber: updates.phoneNumber,
     };
     // Strip undefined properties
     Object.keys(safeUpdates).forEach((k) => {
@@ -285,6 +287,12 @@ export class MockRepository implements Repository {
     if (!schoolEmail.endsWith('@stu.cu.edu.ng')) {
       throw new Error('School email must end in @stu.cu.edu.ng');
     }
+    if (!data.phoneNumber || !isValidNigerianPhone(data.phoneNumber)) {
+      throw new Error('A valid 11-digit Nigerian phone number is required.');
+    }
+    if (!data.matricNumber || !data.matricNumber.trim()) {
+      throw new Error('Matric number is required.');
+    }
     const username = (data.username || schoolEmail.split('@')[0]).replace(/[^a-zA-Z0-9_]/g, '_');
     if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
       throw new Error('Username @' + username + ' is already taken. Please choose another.');
@@ -301,8 +309,9 @@ export class MockRepository implements Repository {
       hallId: data.hallId || 'hall_peter',
       roomNumber: data.roomNumber || 'A-101',
       gender: data.gender || 'male',
-      telegramHandle: data.telegramHandle?.startsWith('@') ? data.telegramHandle : '@' + (data.telegramHandle || username),
-      matricNumber: data.matricNumber,
+      telegramHandle: (data.telegramHandle || '').trim(),
+      phoneNumber: normalizeNigerianPhone(data.phoneNumber || ''),
+      matricNumber: (data.matricNumber || '').trim(),
       regNumber: data.regNumber,
       bio: data.bio || '',
       badges: ['Member'],

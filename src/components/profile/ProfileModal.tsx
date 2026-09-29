@@ -19,6 +19,7 @@ import {
 import { UserProfile, Listing } from '../../types';
 import { ListingCard } from '../marketplace/ListingCard';
 import { formatHallName } from '../../utils/formatHall';
+import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
@@ -51,16 +52,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [bio, setBio] = useState(user.bio || '');
   const [roomNumber, setRoomNumber] = useState(user.roomNumber || '');
   const [telegramHandle, setTelegramHandle] = useState(user.telegramHandle || '');
+  const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber || '');
   const [isSaving, setIsSaving] = useState(false);
   const modalRef = useModalEscape(true, onClose);
 
   const handleSaveProfile = async () => {
+    if (phoneNumber.trim() && !isValidNigerianPhone(phoneNumber)) {
+      showToast('Enter a valid 11-digit Nigerian phone number.', 'error');
+      return;
+    }
     setIsSaving(true);
     try {
       await updateProfile({
         bio: bio.trim(),
         roomNumber: roomNumber.trim(),
         telegramHandle: telegramHandle.trim(),
+        phoneNumber: phoneNumber.trim() ? normalizeNigerianPhone(phoneNumber) : undefined,
       });
       showToast('Profile updated', 'success');
       setIsEditing(false);
@@ -179,10 +186,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <MapPin className="w-3 h-3 text-[var(--color-brand-primary)]" />
                       {formatHallName(user.hallId)}{isSelf && user.roomNumber ? ` · Room ${user.roomNumber}` : ''}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <Send className="w-3 h-3 text-sky-500" />
-                      {user.telegramHandle}
-                    </span>
+                    {user.telegramHandle ? (
+                      <span className="flex items-center gap-1">
+                        <Send className="w-3 h-3 text-sky-500" />
+                        {user.telegramHandle}
+                      </span>
+                    ) : null}
+                    {user.phoneNumber ? (
+                      <span className="flex items-center gap-1 font-mono">
+                        {user.phoneNumber}
+                      </span>
+                    ) : null}
                     <span className="flex items-center gap-1">
                       <Star className="w-3 h-3 text-amber-500" />
                       {user.ratingAverage.toFixed(1)} ({user.ratingCount} reviews)
@@ -211,12 +225,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-[var(--color-text-muted)] mb-1">Telegram Handle</label>
+                      <label className="block text-[var(--color-text-muted)] mb-1">Telegram Handle (Optional)</label>
                       <input
                         type="text"
                         value={telegramHandle}
                         onChange={(e) => setTelegramHandle(e.target.value)}
+                        placeholder="@janedoe"
                         className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[var(--color-text-muted)] mb-1">Phone Number</label>
+                      <input
+                        type="tel"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="08031234567"
+                        className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs font-mono"
                       />
                     </div>
                   </div>
