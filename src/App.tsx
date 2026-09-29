@@ -60,7 +60,7 @@ function AppContent() {
               <Terminal className="w-3.5 h-3.5" />
               <span>Required Resolution:</span>
             </div>
-            <p className="text-amber-400">1. For local testing & review: set VITE_APP_MODE=demo in .env</p>
+            <p className="text-amber-400">1. For local testing & review: unset VITE_APP_MODE or set it to demo in .env</p>
             <p className="text-sky-400">2. For live deployment: execute supabase/schema.sql and supply valid credentials.</p>
           </div>
           <button

@@ -10,15 +10,18 @@
 // Controls whether photos are required when publishing listings
 export const REQUIRE_LISTING_PHOTOS = false;
 
-// Application run mode: 'demo' strictly requires VITE_APP_MODE=demo.
-// In any other build (production, staging, or undefined), demo flags and role switchers are strictly disabled.
+// Application run mode (6.5): VITE_APP_MODE=demo|public. Unset or "demo"
+// means demo (a fresh clone runs the mock database with no configuration).
+// "public" is the strict opt-in: no persona bar, no mock fallback, no demo
+// banner or outbox; Supabase credentials are required or the error screen
+// halts rendering.
 const rawAppMode =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_APP_MODE) ||
   (typeof process !== 'undefined' && process.env?.VITE_APP_MODE) ||
   '';
 
-export const IS_DEMO_MODE = rawAppMode === 'demo';
-export const APP_MODE: 'demo' | 'production' = IS_DEMO_MODE ? 'demo' : 'production';
+export const IS_DEMO_MODE = rawAppMode !== 'public';
+export const APP_MODE: 'demo' | 'public' = IS_DEMO_MODE ? 'demo' : 'public';
 
 // Strict Admin Level Role-Based Permissions
 import { AdminLevel } from '../types';
