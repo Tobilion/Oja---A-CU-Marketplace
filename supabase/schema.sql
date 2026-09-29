@@ -642,12 +642,30 @@ CREATE OR REPLACE FUNCTION public.advance_order_status(
 DECLARE
     v_sub_order RECORD;
     v_actor RECORD;
+    v_buyer_id UUID;
 BEGIN
     SELECT * INTO v_sub_order FROM public.sub_orders WHERE id = p_sub_order_id;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Sub-order % not found', p_sub_order_id;
     END IF;
     SELECT * INTO v_actor FROM public.profiles WHERE id = p_actor_id;
+
+    -- H-04 legality guard: mirror of VALID_ORDER_TRANSITIONS (transitions.ts).
+    -- Any pair not listed here is rejected before role checks run.
+    IF NOT (
+        (v_sub_order.status = 'awaiting_payment' AND p_next_state IN ('payment_confirmed', 'cancelled')) OR
+        (v_sub_order.status = 'payment_confirmed' AND p_next_state IN ('seller_accepted', 'cancelled', 'refunded')) OR
+        (v_sub_order.status = 'seller_accepted' AND p_next_state IN ('ready', 'cancelled', 'disputed')) OR
+        (v_sub_order.status = 'ready' AND p_next_state IN ('agent_assigned', 'cancelled', 'disputed')) OR
+        (v_sub_order.status = 'agent_assigned' AND p_next_state IN ('picked_up', 'disputed', 'cancelled')) OR
+        (v_sub_order.status = 'picked_up' AND p_next_state IN ('out_for_delivery', 'disputed')) OR
+        (v_sub_order.status = 'out_for_delivery' AND p_next_state IN ('delivered', 'disputed')) OR
+        (v_sub_order.status = 'delivered' AND p_next_state IN ('completed', 'disputed')) OR
+        (v_sub_order.status = 'completed' AND p_next_state IN ('disputed')) OR
+        (v_sub_order.status = 'disputed' AND p_next_state IN ('refunded', 'completed', 'cancelled'))
+    ) THEN
+        RAISE EXCEPTION 'Illegal state transition from "%" to "%".', v_sub_order.status, p_next_state;
+    END IF;
 
     -- Strict authorization checks
     IF p_next_state = 'payment_confirmed' THEN
@@ -665,6 +683,22 @@ BEGIN
     ELSIF p_next_state = 'agent_assigned' OR p_next_state = 'picked_up' OR p_next_state = 'out_for_delivery' OR p_next_state = 'delivered' THEN
         IF v_actor.id != v_sub_order.agent_id AND v_actor.admin_level NOT IN ('super_admin', 'logistics_admin') THEN
             RAISE EXCEPTION 'Only assigned delivery agents or logistics admins can advance transit states.';
+        END IF;
+    ELSIF p_next_state = 'completed' THEN
+        -- Buyer confirms receipt (parity with transitions.ts: buyer or Super
+        -- admin only). The 48h auto-confirm sweep writes completed directly
+        -- with its own timeline note instead of calling this RPC.
+        SELECT o.buyer_id INTO v_buyer_id FROM public.orders o WHERE o.id = p_order_id;
+        IF v_actor.id IS DISTINCT FROM v_buyer_id AND v_actor.admin_level IS DISTINCT FROM 'super_admin' THEN
+            RAISE EXCEPTION 'Only the buyer or system auto-confirm can complete the order.';
+        END IF;
+    ELSIF p_next_state = 'cancelled' THEN
+        IF v_actor.admin_level IS NOT NULL AND v_actor.admin_level NOT IN ('super_admin', 'moderator') THEN
+            RAISE EXCEPTION 'Only a Moderator or Super Admin can cancel active orders.';
+        END IF;
+    ELSIF p_next_state = 'disputed' THEN
+        IF v_actor.admin_level IS NOT NULL AND v_actor.admin_level NOT IN ('super_admin', 'moderator') THEN
+            RAISE EXCEPTION 'Only parties to the order or moderators can dispute an order.';
         END IF;
     END IF;
 
