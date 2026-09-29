@@ -295,6 +295,7 @@ function AppContent() {
       {selectedOrder && (
         <OrderDetailModal
           order={selectedOrder}
+          people={sellerMap}
           onClose={() => setSelectedOrder(null)}
           onOrderUpdated={async () => {
             const all = await repo.getAllOrders();

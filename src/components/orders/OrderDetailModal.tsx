@@ -16,7 +16,7 @@ import {
   MapPin,
   Building,
 } from 'lucide-react';
-import { Order, SubOrder, OrderState } from '../../types';
+import { Order, SubOrder, OrderState, UserProfile } from '../../types';
 import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
 import { useAuth } from '../../context/AuthContext';
@@ -29,6 +29,7 @@ interface OrderDetailModalProps {
   onClose: () => void;
   onOrderUpdated: () => void;
   onOpenReviewModal?: (listingId: string, subOrderId: string, orderId: string, agentId?: string) => void;
+  people?: Record<string, UserProfile>;
 }
 
 export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
@@ -36,6 +37,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   onClose,
   onOrderUpdated,
   onOpenReviewModal,
+  people = {},
 }) => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
@@ -44,6 +46,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
   const [codeError, setCodeError] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
   const modalRef = useModalEscape(true, onClose);
 
   const isBuyer = currentUser?.id === order.buyerId;
@@ -119,11 +123,68 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
       await repo.confirmBuyerReceipt(order.id, subOrderId);
       showToast('Order confirmed completed! Seller payout queued.', 'success');
       onOrderUpdated();
-    } catch {
-      showToast('Failed to confirm receipt', 'error');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to confirm receipt', 'error');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleBuyerCancel = async () => {
+    if (!confirm(`Cancel order ${order.orderNumber}? Reserved stock returns to the sellers.`)) return;
+    setIsProcessing(true);
+    try {
+      await repo.cancelOrder(order.id, 'Cancelled by buyer before payment confirmation');
+      showToast('Order cancelled.', 'info');
+      onOrderUpdated();
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to cancel order', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBuyerDispute = async () => {
+    if (!disputeReason.trim()) {
+      showToast('Describe the problem so a moderator can act.', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await repo.disputeOrder(order.id, disputeReason.trim());
+      showToast('Dispute opened. Funds stay held until a moderator decides.', 'info');
+      setShowDisputeForm(false);
+      setDisputeReason('');
+      onOrderUpdated();
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to open dispute', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 5.3 buyer tracker: the handover code matters only once a runner is
+  // involved, not while the order still awaits payment.
+  const codeRelevant = order.subOrders.some((s) =>
+    ['agent_assigned', 'picked_up', 'out_for_delivery', 'delivered'].includes(s.status)
+  );
+  const buyerCanCancel = isBuyer && order.status === 'awaiting_payment';
+  const buyerCanDispute =
+    isBuyer &&
+    ['payment_confirmed', 'seller_accepted', 'ready', 'agent_assigned', 'picked_up', 'out_for_delivery', 'delivered'].includes(
+      order.status
+    );
+
+  const holderLabel = (sub: SubOrder) => {
+    if (sub.status === 'completed') return 'Delivered and confirmed';
+    if (sub.agentId) return `With runner ${people[sub.agentId]?.fullName || ''}`.trim();
+    if (sub.status === 'ready') return 'Packed, awaiting a runner';
+    return `With seller ${people[sub.sellerId]?.fullName || ''}`.trim();
+  };
+
+  const expectedBy = (sub: SubOrder) => {
+    if (!sub.sellerAcceptedAt || !sub.deliveryTimeAgreedHours) return null;
+    return new Date(new Date(sub.sellerAcceptedAt).getTime() + sub.deliveryTimeAgreedHours * 3600 * 1000);
   };
 
   return (
@@ -149,8 +210,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
         {/* Body */}
         <div className="overflow-y-auto p-6 space-y-6 text-xs">
-          {/* Buyer 4-Digit Handover Code Card */}
-          {isBuyer && (
+          {/* Buyer 4-Digit Handover Code Card (only once a runner is involved) */}
+          {isBuyer && codeRelevant && (
             <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-950 dark:text-emerald-200 flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5 font-bold text-xs">
@@ -277,6 +338,13 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                       </button>
                     )}
 
+                    {isBuyer && (sub.status === 'out_for_delivery' || sub.status === 'delivered') && (
+                      <span className="text-[11px] text-[var(--color-text-muted)]">
+                        {holderLabel(sub)}
+                        {expectedBy(sub) && ` · Expected by ${expectedBy(sub)!.toLocaleDateString()}`}
+                      </span>
+                    )}
+
                     {/* Buyer Review */}
                     {isBuyer && sub.status === 'completed' && onOpenReviewModal && (
                       <button
@@ -345,6 +413,53 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               );
             })}
           </div>
+
+          {/* Buyer order-level actions */}
+          {(buyerCanCancel || buyerCanDispute) && (
+            <div className="flex flex-wrap gap-2">
+              {buyerCanCancel && (
+                <button
+                  onClick={handleBuyerCancel}
+                  disabled={isProcessing}
+                  className="px-3.5 py-1.5 rounded-lg border border-red-500/30 text-red-600 disabled:opacity-50"
+                >
+                  Cancel Order
+                </button>
+              )}
+              {buyerCanDispute && !showDisputeForm && (
+                <button
+                  onClick={() => setShowDisputeForm(true)}
+                  className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)]"
+                >
+                  Dispute Order
+                </button>
+              )}
+            </div>
+          )}
+          {showDisputeForm && (
+            <div className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] space-y-2">
+              <span className="font-semibold text-[var(--color-text-main)]">What went wrong?</span>
+              <textarea
+                rows={2}
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                placeholder="e.g. Item never arrived, wrong item delivered..."
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setShowDisputeForm(false)} className="px-3 py-1.5 text-neutral-400">
+                  Back
+                </button>
+                <button
+                  onClick={handleBuyerDispute}
+                  disabled={isProcessing}
+                  className="px-4 py-1.5 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-50"
+                >
+                  Open Dispute
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Payment & Total Card */}
           <div className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] space-y-2">
