@@ -31,6 +31,7 @@ import { MockStorage, pickCurrentUser } from './mockStorage';
 import { calculateOrderDeliveryFee, calculateLatePenalty } from '../utils/deliveryFee';
 import { VALID_ORDER_TRANSITIONS, validateOrderTransition, deriveOrderActorRole } from '../utils/transitions';
 import { FOUNDING_SUPER_ADMIN_EMAILS } from '../config/appConfig';
+import { isOnlyDeliveryAgentDiff } from '../utils/adminGuards';
 
 export class MockRepository implements Repository {
   readonly isMock = true;
@@ -114,8 +115,15 @@ export class MockRepository implements Repository {
       updates.sellerApplicationStatus !== undefined;
     const isSuper = actor.adminLevel === 'super_admin';
     const isMod = actor.adminLevel === 'moderator';
+    const isLogistics = actor.adminLevel === 'logistics_admin';
     if (wantsRoleChange && !isSuper) {
-      throw new Error('Only a Super admin can change badges or admin levels.');
+      // Scoped carve-out: logistics may touch ONLY the Delivery Agent badge.
+      const nextBadges = updates.badges !== undefined ? [...updates.badges] : [...target.badges];
+      const onlyAgentBadge =
+        updates.adminLevel === undefined && isLogistics && isOnlyDeliveryAgentDiff(target.badges, nextBadges);
+      if (!onlyAgentBadge) {
+        throw new Error('Only a Super admin can change badges or admin levels.');
+      }
     }
     if (wantsModeration && !(isSuper || isMod)) {
       throw new Error('Only a Super admin or Moderator can suspend users or approve sellers.');

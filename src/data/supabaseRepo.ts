@@ -95,6 +95,7 @@ export class SupabaseRepository implements Repository {
     // H-03: same guards as the mock repo (defense in depth). The trigger and
     // profiles_admin_update RLS policy enforce them server-side regardless.
     const { FOUNDING_SUPER_ADMIN_EMAILS } = await import('../config/appConfig');
+    const { isOnlyDeliveryAgentDiff } = await import('../utils/adminGuards');
     const actor = await this.getUserById(actorId);
     if (!actor?.adminLevel) throw new Error('Admin privileges required.');
     const target = await this.getUserById(targetId);
@@ -109,7 +110,13 @@ export class SupabaseRepository implements Repository {
       updates.sellerApplicationStatus !== undefined;
     const isSuper = actor.adminLevel === 'super_admin';
     const isMod = actor.adminLevel === 'moderator';
-    if (wantsRoleChange && !isSuper) throw new Error('Only a Super admin can change badges or admin levels.');
+    const isLogistics = actor.adminLevel === 'logistics_admin';
+    if (wantsRoleChange && !isSuper) {
+      const nextBadges = updates.badges !== undefined ? [...updates.badges] : [...target.badges];
+      const onlyAgentBadge =
+        updates.adminLevel === undefined && isLogistics && isOnlyDeliveryAgentDiff(target.badges, nextBadges);
+      if (!onlyAgentBadge) throw new Error('Only a Super admin can change badges or admin levels.');
+    }
     if (wantsModeration && !(isSuper || isMod)) {
       throw new Error('Only a Super admin or Moderator can suspend users or approve sellers.');
     }

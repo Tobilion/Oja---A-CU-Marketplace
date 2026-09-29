@@ -385,7 +385,20 @@ BEGIN
         NEW.rating_average IS DISTINCT FROM OLD.rating_average OR
         NEW.rating_count IS DISTINCT FROM OLD.rating_count) THEN
 
-        -- Role and badge changes: Super admin only.
+        -- Scoped carve-out: a Logistics admin may grant/revoke ONLY the Delivery
+    -- Agent badge (agent duty). Mirrors isOnlyDeliveryAgentDiff (adminGuards).
+    IF v_caller_level = 'logistics_admin'
+       AND NEW.admin_level IS NOT DISTINCT FROM OLD.admin_level
+       AND NEW.is_suspended IS NOT DISTINCT FROM OLD.is_suspended
+       AND NEW.is_seller_approved IS NOT DISTINCT FROM OLD.is_seller_approved
+       AND NEW.seller_application_status IS NOT DISTINCT FROM OLD.seller_application_status
+       AND NEW.rating_average IS NOT DISTINCT FROM OLD.rating_average
+       AND NEW.rating_count IS NOT DISTINCT FROM OLD.rating_count
+       AND NOT EXISTS (SELECT 1 FROM unnest(NEW.badges) e WHERE e <> ALL(OLD.badges) AND e != 'Delivery Agent')
+       AND NOT EXISTS (SELECT 1 FROM unnest(OLD.badges) e WHERE e <> ALL(NEW.badges) AND e != 'Delivery Agent')
+       AND (NEW.badges IS DISTINCT FROM OLD.badges) THEN
+        RETURN NEW;
+    END IF;
         IF (NEW.admin_level IS DISTINCT FROM OLD.admin_level OR
             NEW.badges IS DISTINCT FROM OLD.badges) AND
            (v_caller_level IS NULL OR v_caller_level != 'super_admin') THEN
