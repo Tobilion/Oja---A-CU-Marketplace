@@ -7,6 +7,7 @@ import {
   Repository,
   PlaceOrderInput,
   AdminUserUpdates,
+  AvailableDelivery,
 } from './repo';
 import {
   UserProfile,
@@ -794,12 +795,25 @@ export class MockRepository implements Repository {
     return order;
   }
 
-  async rejectSubOrder(orderId: string, subOrderId: string, reason: string): Promise<Order> {
+  async rejectSubOrder(orderId: string, subOrderId: string, reason: string, actorId?: string): Promise<Order> {
     const orders = MockStorage.getOrders();
     const order = orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
     const sub = order.subOrders.find((s) => s.id === subOrderId);
     if (!sub) throw new Error('Sub-order not found');
+
+    // Ownership + legality: only the seller (or Super admin) may reject, and
+    // only before the sub-order leaves the cancellable states.
+    if (actorId) {
+      const users = MockStorage.getUsers();
+      const actor = users.find((u) => u.id === actorId);
+      if (actor?.id !== sub.sellerId && actor?.adminLevel !== 'super_admin') {
+        throw new Error('Only the assigned seller can reject this sub-order.');
+      }
+    }
+    if (sub.status !== 'payment_confirmed' && sub.status !== 'seller_accepted') {
+      throw new Error(`Illegal state transition from "${sub.status}" to "cancelled".`);
+    }
 
     // Atomic Stock Rollback for this sub-order's items
     const listings = MockStorage.getListings();
@@ -847,7 +861,11 @@ export class MockRepository implements Repository {
 
     // Rollback stock for all items
     const listings = MockStorage.getListings();
+    // Parity with the Supabase path: only sub-orders in a cancellable state
+    // move; terminal ones are left alone instead of corrupting history.
+    const cancellable: OrderState[] = ['awaiting_payment', 'payment_confirmed', 'seller_accepted', 'ready', 'agent_assigned', 'disputed'];
     for (const sub of order.subOrders) {
+      if (!cancellable.includes(sub.status)) continue;
       for (const item of sub.items) {
         const listing = listings.find((l) => l.id === item.listingId);
         if (listing) {
@@ -866,7 +884,9 @@ export class MockRepository implements Repository {
     }
     MockStorage.setListings(listings);
 
-    order.status = 'cancelled';
+    if (order.subOrders.every((s) => s.status === 'cancelled')) {
+      order.status = 'cancelled';
+    }
     order.updatedAt = new Date().toISOString();
     MockStorage.setOrders(orders);
 
@@ -918,12 +938,24 @@ export class MockRepository implements Repository {
     return order;
   }
 
-  async extendDeliveryPromise(orderId: string, subOrderId: string, additionalHours: number, reason: string): Promise<Order> {
+  async extendDeliveryPromise(orderId: string, subOrderId: string, additionalHours: number, reason: string, actorId?: string): Promise<Order> {
     const orders = MockStorage.getOrders();
     const order = orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
     const sub = order.subOrders.find((s) => s.id === subOrderId);
     if (!sub) throw new Error('Sub-order not found');
+
+    // Only Logistics admins and Super admins may extend the promise.
+    if (actorId) {
+      const users = MockStorage.getUsers();
+      const actor = users.find((u) => u.id === actorId);
+      if (actor?.adminLevel !== 'super_admin' && actor?.adminLevel !== 'logistics_admin') {
+        throw new Error('Only Logistics admins or Super admins can extend the delivery promise.');
+      }
+    }
+    if (!additionalHours || additionalHours <= 0) {
+      throw new Error('Extension must be a positive number of hours.');
+    }
 
     sub.deliveryTimeAgreedHours = (sub.deliveryTimeAgreedHours || 48) + additionalHours;
     sub.statusTimeline.push({
@@ -1003,12 +1035,26 @@ export class MockRepository implements Repository {
     return order;
   }
 
-  async sellerAcceptSubOrder(orderId: string, subOrderId: string, agreedHours: number): Promise<Order> {
+  async sellerAcceptSubOrder(orderId: string, subOrderId: string, agreedHours: number, actorId?: string): Promise<Order> {
     const orders = MockStorage.getOrders();
     const order = orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
     const sub = order.subOrders.find((s) => s.id === subOrderId);
     if (!sub) throw new Error('Sub-order not found');
+
+    if (actorId) {
+      const users = MockStorage.getUsers();
+      const actor = users.find((u) => u.id === actorId);
+      if (actor?.id !== sub.sellerId && actor?.adminLevel !== 'super_admin') {
+        throw new Error('Only the assigned seller can accept this sub-order.');
+      }
+    }
+    if (sub.status !== 'payment_confirmed') {
+      throw new Error(`Illegal state transition from "${sub.status}" to "seller_accepted".`);
+    }
+    if (!agreedHours || agreedHours <= 0) {
+      throw new Error('Agreed delivery window must be a positive number of hours.');
+    }
 
     sub.sellerAcceptedAt = new Date().toISOString();
     sub.deliveryTimeAgreedHours = agreedHours;
@@ -1035,6 +1081,22 @@ export class MockRepository implements Repository {
     if (sub.agentId && sub.status === 'agent_assigned') {
       throw new Error('This sub-order has already been assigned to another delivery agent.');
     }
+    if (sub.status !== 'ready') {
+      throw new Error(`Only ready sub-orders can be claimed (current: "${sub.status}").`);
+    }
+
+    // Hall-gender eligibility, mirroring agent_claim_sub_order.
+    const users = MockStorage.getUsers();
+    const agent = users.find((u) => u.id === agentId);
+    if (!agent || !agent.badges.includes('Delivery Agent')) {
+      throw new Error('Only registered delivery agents can claim deliveries.');
+    }
+    const seller = users.find((u) => u.id === sub.sellerId);
+    const halls = MockStorage.getHalls();
+    const hallGender = halls.find((h) => h.id === seller?.hallId)?.gender;
+    if (hallGender && hallGender !== 'mixed' && hallGender !== agent.gender) {
+      throw new Error(`This pickup hall is restricted to ${hallGender} agents.`);
+    }
 
     sub.agentId = agentId;
     sub.status = 'agent_assigned';
@@ -1058,7 +1120,7 @@ export class MockRepository implements Repository {
     return order;
   }
 
-  async completeDeliveryWithCode(orderId: string, subOrderId: string, code: string): Promise<boolean> {
+  async completeDeliveryWithCode(orderId: string, subOrderId: string, code: string, actorId?: string): Promise<boolean> {
     const orders = MockStorage.getOrders();
     const order = orders.find((o) => o.id === orderId);
     if (!order) return false;
@@ -1068,6 +1130,16 @@ export class MockRepository implements Repository {
 
     const sub = order.subOrders.find((s) => s.id === subOrderId);
     if (!sub) return false;
+    if (sub.status !== 'out_for_delivery') return false;
+
+    // Code possession authorizes handover; when the actor is known it must be
+    // the assigned agent (or an admin stepping in).
+    if (actorId) {
+      const users = MockStorage.getUsers();
+      const actor = users.find((u) => u.id === actorId);
+      const isAdmin = actor?.adminLevel === 'super_admin' || actor?.adminLevel === 'logistics_admin';
+      if (actor?.id !== sub.agentId && !isAdmin) return false;
+    }
 
     sub.deliveredAt = new Date().toISOString();
     sub.status = 'delivered';
@@ -1163,6 +1235,39 @@ export class MockRepository implements Repository {
 
   async getAllOrders(): Promise<Order[]> {
     return MockStorage.getOrders();
+  }
+
+  async getAvailableDeliveries(agentId: string): Promise<AvailableDelivery[]> {
+    // Delivery board parity with the available_deliveries RPC: ready,
+    // unclaimed, and hall-gender eligible for this agent, oldest first.
+    const users = MockStorage.getUsers();
+    const agent = users.find((u) => u.id === agentId);
+    if (!agent || !agent.badges.includes('Delivery Agent')) return [];
+    const halls = MockStorage.getHalls();
+    const board: AvailableDelivery[] = [];
+    for (const order of MockStorage.getOrders()) {
+      for (const sub of order.subOrders) {
+        if (sub.status !== 'ready' || sub.agentId) continue;
+        const seller = users.find((u) => u.id === sub.sellerId);
+        const hallGender = halls.find((h) => h.id === seller?.hallId)?.gender;
+        if (hallGender && hallGender !== 'mixed' && hallGender !== agent.gender) continue;
+        board.push({
+          subOrderId: sub.id,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          paymentMode: order.paymentMode,
+          sellerHallId: seller?.hallId || '',
+          deliveryHallId: order.deliveryHallId,
+          deliveryRoom: order.deliveryRoom,
+          subtotal: sub.subtotal,
+          deliveryFee: sub.deliveryFee,
+          itemsCount: sub.itemsCount,
+          createdAt: sub.statusTimeline[sub.statusTimeline.length - 1]?.timestamp || order.createdAt,
+          items: sub.items.map((i) => ({ title: i.title, quantity: i.quantity })),
+        });
+      }
+    }
+    return board.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }
 
   async markSellerPayoutPaid(subOrderId: string): Promise<void> {

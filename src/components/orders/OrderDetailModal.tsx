@@ -65,11 +65,11 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const handleSellerAccept = async (subOrderId: string) => {
     setIsProcessing(true);
     try {
-      await repo.sellerAcceptSubOrder(order.id, subOrderId, 24);
+      await repo.sellerAcceptSubOrder(order.id, subOrderId, 24, currentUser?.id);
       showToast('Sub-order accepted. Delivery window starts.', 'success');
       onOrderUpdated();
-    } catch {
-      showToast('Failed to accept sub-order', 'error');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to accept sub-order', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -97,7 +97,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     setCodeError(false);
     setIsProcessing(true);
     try {
-      const ok = await repo.completeDeliveryWithCode(order.id, subOrderId, deliveryCodeInput.trim());
+      const ok = await repo.completeDeliveryWithCode(order.id, subOrderId, deliveryCodeInput.trim(), currentUser?.id);
       if (ok) {
         showToast('Delivery handover verified successfully!', 'success');
         setSelectedSubOrderId(null);

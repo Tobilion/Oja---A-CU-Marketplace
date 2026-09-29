@@ -43,6 +43,25 @@ export interface AdminUserUpdates {
   sellerApplicationStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 }
 
+/**
+ * One row of the delivery board: a ready, unclaimed sub-order the agent is
+ * eligible to claim (hall gender already filtered server-side / in mock).
+ */
+export interface AvailableDelivery {
+  subOrderId: string;
+  orderId: string;
+  orderNumber: string;
+  paymentMode: PaymentMode;
+  sellerHallId: string;
+  deliveryHallId: string;
+  deliveryRoom: string;
+  subtotal: number;
+  deliveryFee: number;
+  itemsCount: number;
+  createdAt: string;
+  items: { title: string; quantity: number }[];
+}
+
 export interface Repository {
   readonly isMock: boolean;
 
@@ -92,18 +111,19 @@ export interface Repository {
   // Orders & Lifecycle
   placeOrder(input: PlaceOrderInput): Promise<Order>;
   advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string, actorId?: string): Promise<Order>;
-  rejectSubOrder(orderId: string, subOrderId: string, reason: string): Promise<Order>;
+  rejectSubOrder(orderId: string, subOrderId: string, reason: string, actorId?: string): Promise<Order>;
   cancelOrder(orderId: string, reason: string): Promise<Order>;
   disputeOrder(orderId: string, reason: string): Promise<Order>;
-  extendDeliveryPromise(orderId: string, subOrderId: string, additionalHours: number, reason: string): Promise<Order>;
+  extendDeliveryPromise(orderId: string, subOrderId: string, additionalHours: number, reason: string, actorId?: string): Promise<Order>;
   submitPaymentDetails(orderId: string, reference: string, senderName: string, amount: number): Promise<Order>;
   verifyPayment(orderId: string, approved: boolean, note?: string): Promise<Order>;
-  sellerAcceptSubOrder(orderId: string, subOrderId: string, agreedHours: number): Promise<Order>;
+  sellerAcceptSubOrder(orderId: string, subOrderId: string, agreedHours: number, actorId?: string): Promise<Order>;
   assignDeliveryAgent(orderId: string, subOrderId: string, agentId: string): Promise<Order>;
-  completeDeliveryWithCode(orderId: string, subOrderId: string, code: string): Promise<boolean>;
+  completeDeliveryWithCode(orderId: string, subOrderId: string, code: string, actorId?: string): Promise<boolean>;
   confirmBuyerReceipt(orderId: string, subOrderId: string): Promise<Order>;
   getOrdersForUser(userId: string): Promise<Order[]>;
   getAllOrders(): Promise<Order[]>;
+  getAvailableDeliveries(agentId: string): Promise<AvailableDelivery[]>;
   markSellerPayoutPaid(subOrderId: string): Promise<void>;
 
   // Reviews & Ratings

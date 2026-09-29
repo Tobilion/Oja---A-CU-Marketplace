@@ -8,6 +8,7 @@ import {
   Repository,
   PlaceOrderInput,
   AdminUserUpdates,
+  AvailableDelivery,
 } from './repo';
 import {
   UserProfile,
@@ -444,9 +445,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async advanceOrderStatus(orderId: string, subOrderId: string, nextState: OrderState, note?: string, actorId?: string): Promise<Order> {
-    const { data: { user } } = await this.client.auth.getUser();
-    const resolvedActorId = actorId || user?.id;
-    if (!resolvedActorId) throw new Error('Sign in required to update order status.');
+    const resolvedActorId = await this.resolveActorId(actorId);
     const { error } = await this.client.rpc('advance_order_status', {
       p_order_id: orderId,
       p_sub_order_id: subOrderId,
@@ -458,43 +457,57 @@ export class SupabaseRepository implements Repository {
     return (await this.fetchFullOrder(orderId))!;
   }
 
-  async rejectSubOrder(orderId: string, subOrderId: string, reason: string): Promise<Order> {
-    // 1. Rollback stock
-    const { data: items } = await this.client.from('order_items').select('*').eq('sub_order_id', subOrderId);
-    for (const item of items || []) {
-      const { data: listing } = await this.client.from('listings').select('stock').eq('id', item.listing_id).single();
-      if (listing) {
-        await this.client.from('listings').update({
-          stock: listing.stock + item.quantity,
-          status: 'active',
-        }).eq('id', item.listing_id);
-      }
-    }
-    // 2. Advance status to cancelled
-    return this.advanceOrderStatus(orderId, subOrderId, 'cancelled', `Seller rejected: ${reason}`);
+  async rejectSubOrder(orderId: string, subOrderId: string, reason: string, actorId?: string): Promise<Order> {
+    // Stock rolls back inside restock_sub_order (SECURITY DEFINER); the
+    // status moves through the validated RPC so illegal exits are rejected.
+    const { error: restockError } = await this.client.rpc('restock_sub_order', { p_sub_order_id: subOrderId });
+    if (restockError) throw restockError;
+    return this.advanceOrderStatus(orderId, subOrderId, 'cancelled', `Seller rejected: ${reason}`, actorId);
   }
 
   async cancelOrder(orderId: string, reason: string): Promise<Order> {
     const order = await this.fetchFullOrder(orderId);
     if (!order) throw new Error('Order not found');
+    // Only sub-orders in a cancellable state move; terminal ones are left
+    // alone instead of throwing halfway through.
+    const cancellable: OrderState[] = ['awaiting_payment', 'payment_confirmed', 'seller_accepted', 'ready', 'agent_assigned', 'disputed'];
     for (const sub of order.subOrders) {
-      await this.rejectSubOrder(orderId, sub.id, reason);
+      if (!cancellable.includes(sub.status)) continue;
+      const { error: restockError } = await this.client.rpc('restock_sub_order', { p_sub_order_id: sub.id });
+      if (restockError) throw restockError;
+      await this.advanceOrderStatus(orderId, sub.id, 'cancelled', `Order cancelled: ${reason}`);
     }
-    await this.client.from('orders').update({ status: 'cancelled' }).eq('id', orderId);
-    return (await this.fetchFullOrder(orderId))!;
+    const refreshed = (await this.fetchFullOrder(orderId))!;
+    if (refreshed.subOrders.every((s) => s.status === 'cancelled')) {
+      await this.client.from('orders').update({ status: 'cancelled' }).eq('id', orderId);
+      return (await this.fetchFullOrder(orderId))!;
+    }
+    return refreshed;
   }
 
   async disputeOrder(orderId: string, reason: string): Promise<Order> {
-    const { error } = await this.client.from('orders').update({ status: 'disputed' }).eq('id', orderId);
-    if (error) throw error;
-    await this.client.from('sub_orders').update({ status: 'disputed' }).eq('order_id', orderId);
+    const order = await this.fetchFullOrder(orderId);
+    if (!order) throw new Error('Order not found');
+    for (const sub of order.subOrders) {
+      try {
+        await this.advanceOrderStatus(orderId, sub.id, 'disputed', `Dispute opened: ${reason}`);
+      } catch {
+        // Sub-orders that cannot legally dispute (e.g. terminal) are left alone.
+      }
+    }
+    await this.client.from('orders').update({ status: 'disputed' }).eq('id', orderId);
     return (await this.fetchFullOrder(orderId))!;
   }
 
-  async extendDeliveryPromise(orderId: string, subOrderId: string, additionalHours: number, reason: string): Promise<Order> {
-    const { data: sub } = await this.client.from('sub_orders').select('delivery_time_agreed_hours').eq('id', subOrderId).single();
-    const newHours = (sub?.delivery_time_agreed_hours || 48) + additionalHours;
-    await this.client.from('sub_orders').update({ delivery_time_agreed_hours: newHours }).eq('id', subOrderId);
+  async extendDeliveryPromise(orderId: string, subOrderId: string, additionalHours: number, reason: string, actorId?: string): Promise<Order> {
+    const resolvedActorId = await this.resolveActorId(actorId);
+    const { error } = await this.client.rpc('extend_delivery_promise', {
+      p_sub_order_id: subOrderId,
+      p_actor_id: resolvedActorId,
+      p_additional_hours: additionalHours,
+      p_reason: reason,
+    });
+    if (error) throw error;
     return (await this.fetchFullOrder(orderId))!;
   }
 
@@ -510,62 +523,97 @@ export class SupabaseRepository implements Repository {
   }
 
   async verifyPayment(orderId: string, approved: boolean, note?: string): Promise<Order> {
-    const { data: order } = await this.client.from('orders').select('payment_status').eq('id', orderId).single();
-    if (order?.payment_status === 'verified') throw new Error('Payment already verified.');
+    const order = await this.fetchFullOrder(orderId);
+    if (!order) throw new Error('Order not found');
+    if (order.paymentStatus === 'verified') throw new Error('Payment already verified.');
 
-    const status = approved ? 'verified' : 'rejected';
-    const orderStatus = approved ? 'payment_confirmed' : 'awaiting_payment';
-    await this.client.from('orders').update({ payment_status: status, status: orderStatus }).eq('id', orderId);
     if (approved) {
-      await this.client.from('sub_orders').update({ status: 'payment_confirmed' }).eq('order_id', orderId);
+      // Each sub-order moves through the validated RPC (role + legality).
+      for (const sub of order.subOrders) {
+        if (sub.status === 'awaiting_payment') {
+          await this.advanceOrderStatus(orderId, sub.id, 'payment_confirmed', note || 'Payment verified by admin');
+        }
+      }
+      await this.client.from('orders').update({ payment_status: 'verified', status: 'payment_confirmed' }).eq('id', orderId);
+    } else {
+      await this.client.from('orders').update({ payment_status: 'rejected' }).eq('id', orderId);
     }
     return (await this.fetchFullOrder(orderId))!;
   }
 
-  async sellerAcceptSubOrder(orderId: string, subOrderId: string, agreedHours: number): Promise<Order> {
-    await this.client.from('sub_orders').update({
-      status: 'seller_accepted',
-      seller_accepted_at: new Date().toISOString(),
-      delivery_time_agreed_hours: agreedHours,
-    }).eq('id', subOrderId);
+  async sellerAcceptSubOrder(orderId: string, subOrderId: string, agreedHours: number, actorId?: string): Promise<Order> {
+    const resolvedActorId = await this.resolveActorId(actorId);
+    const { error } = await this.client.rpc('seller_accept_sub_order', {
+      p_sub_order_id: subOrderId,
+      p_actor_id: resolvedActorId,
+      p_agreed_hours: agreedHours,
+    });
+    if (error) throw error;
     return (await this.fetchFullOrder(orderId))!;
   }
 
   async assignDeliveryAgent(orderId: string, subOrderId: string, agentId: string): Promise<Order> {
-    const { data: sub } = await this.client.from('sub_orders').select('agent_id, status').eq('id', subOrderId).single();
-    if (sub?.agent_id === agentId) return (await this.fetchFullOrder(orderId))!;
-    if (sub?.agent_id && sub.status === 'agent_assigned') {
-      throw new Error('Sub-order already assigned to another agent.');
-    }
-    await this.client.from('sub_orders').update({ agent_id: agentId, status: 'agent_assigned' }).eq('id', subOrderId);
+    // Atomic claim with eligibility inside agent_claim_sub_order: one winner,
+    // losers get a clear error instead of a silent overwrite.
+    const { error } = await this.client.rpc('agent_claim_sub_order', {
+      p_sub_order_id: subOrderId,
+      p_agent_id: agentId,
+    });
+    if (error) throw error;
     return (await this.fetchFullOrder(orderId))!;
   }
 
-  async completeDeliveryWithCode(orderId: string, subOrderId: string, code: string): Promise<boolean> {
-    const { data: order } = await this.client.from('orders').select('delivery_code').eq('id', orderId).single();
-    if (!order || order.delivery_code.trim() !== code.trim()) return false;
-    await this.client.from('sub_orders').update({
-      status: 'delivered',
-      delivered_at: new Date().toISOString(),
-    }).eq('id', subOrderId);
+  async completeDeliveryWithCode(orderId: string, subOrderId: string, code: string, actorId?: string): Promise<boolean> {
+    const resolvedActorId = await this.resolveActorId(actorId);
+    const { error } = await this.client.rpc('delivery_complete_with_code', {
+      p_sub_order_id: subOrderId,
+      p_actor_id: resolvedActorId,
+      p_code: code,
+    });
+    if (error) {
+      // Wrong code stays a false return (form-level concern); auth and state
+      // violations throw so the caller can explain them.
+      if (error.message.includes('mismatch')) return false;
+      throw error;
+    }
     return true;
   }
 
   async confirmBuyerReceipt(orderId: string, subOrderId: string): Promise<Order> {
-    const completedAt = new Date().toISOString();
-    await this.client.from('sub_orders').update({ status: 'completed', completed_at: completedAt }).eq('id', subOrderId);
-    
-    // Check late penalty
-    const { data: sub } = await this.client.from('sub_orders').select('seller_accepted_at, delivery_time_agreed_hours').eq('id', subOrderId).single();
-    if (sub?.seller_accepted_at && sub?.delivery_time_agreed_hours) {
-      const accepted = new Date(sub.seller_accepted_at).getTime();
-      const completed = new Date(completedAt).getTime();
-      const hoursLate = (completed - accepted) / (1000 * 60 * 60) - sub.delivery_time_agreed_hours;
+    const completedAt = Date.now();
+    const updated = await this.advanceOrderStatus(orderId, subOrderId, 'completed', 'Buyer confirmed receipt. Seller payout unlocked.');
+
+    // Late penalty on the confirmed handover.
+    const sub = updated.subOrders.find((s) => s.id === subOrderId);
+    if (sub?.sellerAcceptedAt && sub?.deliveryTimeAgreedHours) {
+      const accepted = new Date(sub.sellerAcceptedAt).getTime();
+      const hoursLate = (completedAt - accepted) / (1000 * 60 * 60) - sub.deliveryTimeAgreedHours;
       if (hoursLate > 0) {
         await this.client.rpc('apply_late_penalty', { p_sub_order_id: subOrderId, p_hours_late: hoursLate });
+        return (await this.fetchFullOrder(orderId))!;
       }
     }
-    return (await this.fetchFullOrder(orderId))!;
+    return updated;
+  }
+
+  async getAvailableDeliveries(agentId: string): Promise<AvailableDelivery[]> {
+    const { data, error } = await this.client.rpc('available_deliveries', { p_agent_id: agentId });
+    if (error) throw error;
+    const rows = (data || []) as any[];
+    return rows.map((r) => ({
+      subOrderId: r.sub_order_id,
+      orderId: r.order_id,
+      orderNumber: r.order_number,
+      paymentMode: r.payment_mode,
+      sellerHallId: r.seller_hall_id,
+      deliveryHallId: r.delivery_hall_id,
+      deliveryRoom: r.delivery_room,
+      subtotal: Number(r.subtotal),
+      deliveryFee: Number(r.delivery_fee),
+      itemsCount: Number(r.items_count),
+      createdAt: r.created_at,
+      items: (r.items || []).map((i: any) => ({ title: i.title, quantity: Number(i.quantity) })),
+    }));
   }
 
   async getOrdersForUser(userId: string): Promise<Order[]> {
@@ -811,6 +859,13 @@ export class SupabaseRepository implements Repository {
   }
 
   // --- Helpers ---
+  private async resolveActorId(explicit?: string): Promise<string> {
+    if (explicit) return explicit;
+    const { data: { user } } = await this.client.auth.getUser();
+    if (!user?.id) throw new Error('Sign in required.');
+    return user.id;
+  }
+
   private async fetchFullOrder(orderId: string): Promise<Order | null> {
     const { data: ord, error: ordError } = await this.client.from('orders').select('*').eq('id', orderId).single();
     if (ordError || !ord) return null;
