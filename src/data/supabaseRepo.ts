@@ -141,6 +141,7 @@ export class SupabaseRepository implements Repository {
     if (updates.fullName !== undefined) payload.full_name = updates.fullName;
     if (updates.hallId !== undefined) payload.hall_id = updates.hallId;
     if (updates.roomNumber !== undefined) payload.room_number = updates.roomNumber;
+    if (updates.gender !== undefined) payload.gender = updates.gender;
     if (updates.telegramHandle !== undefined) payload.telegram_handle = updates.telegramHandle;
     if (updates.bio !== undefined) payload.bio = updates.bio;
     if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;

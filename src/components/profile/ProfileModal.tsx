@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ShieldCheck,
@@ -16,7 +16,7 @@ import {
   Edit3,
   Check,
 } from 'lucide-react';
-import { UserProfile, Listing } from '../../types';
+import { UserProfile, Listing, Hall, Gender } from '../../types';
 import { ListingCard } from '../marketplace/ListingCard';
 import { formatHallName } from '../../utils/formatHall';
 import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
@@ -53,8 +53,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [roomNumber, setRoomNumber] = useState(user.roomNumber || '');
   const [telegramHandle, setTelegramHandle] = useState(user.telegramHandle || '');
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber || '');
+  const [hallId, setHallId] = useState(user.hallId);
+  const [gender, setGender] = useState<Gender>(user.gender);
+  const [hallsList, setHallsList] = useState<Hall[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const modalRef = useModalEscape(true, onClose);
+
+  // Halls change every semester, so residence is editable here (this modal
+  // doubles as the account settings surface). Loaded lazily on edit.
+  useEffect(() => {
+    if (isEditing && hallsList.length === 0) {
+      repo.getHalls().then(setHallsList).catch(() => setHallsList([]));
+    }
+  }, [isEditing, hallsList.length]);
 
   const handleSaveProfile = async () => {
     if (phoneNumber.trim() && !isValidNigerianPhone(phoneNumber)) {
@@ -68,6 +79,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         roomNumber: roomNumber.trim(),
         telegramHandle: telegramHandle.trim(),
         phoneNumber: phoneNumber.trim() ? normalizeNigerianPhone(phoneNumber) : undefined,
+        hallId,
+        gender,
       });
       showToast('Profile updated', 'success');
       setIsEditing(false);
@@ -223,6 +236,35 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         onChange={(e) => setRoomNumber(e.target.value)}
                         className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[var(--color-text-muted)] mb-1">Hall</label>
+                      {hallsList.length === 0 ? (
+                        <p className="text-[11px] text-[var(--color-text-muted)] py-2">Loading halls...</p>
+                      ) : (
+                        <select
+                          value={hallId}
+                          onChange={(e) => setHallId(e.target.value)}
+                          className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
+                        >
+                          {hallsList.map((h) => (
+                            <option key={h.id} value={h.id}>
+                              {h.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-[var(--color-text-muted)] mb-1">Gender</label>
+                      <select
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value as Gender)}
+                        className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2 text-xs"
+                      >
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-[var(--color-text-muted)] mb-1">Telegram Handle (Optional)</label>

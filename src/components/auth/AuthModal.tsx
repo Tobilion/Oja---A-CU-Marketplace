@@ -91,6 +91,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
       setErrorMsg('Covenant school email must end in @stu.cu.edu.ng');
       return;
     }
+    // The hall list comes from the live database; submitting with no valid
+    // hall used to die silently (bad FK) with an empty dropdown as the only
+    // clue. Fail loudly instead.
+    if (halls.length === 0 || !halls.some((h) => h.id === hallId)) {
+      setErrorMsg('Hall list failed to load. Check your connection, close this form, and try again.');
+      return;
+    }
     if (!isValidNigerianPhone(phoneNumber)) {
       setErrorMsg('Enter a valid 11-digit Nigerian phone number (e.g. 08031234567).');
       return;
@@ -315,6 +322,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                 </div>
                 <div>
                   <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Hall *</label>
+                  {halls.length === 0 ? (
+                    <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">
+                      Hall list failed to load. Check your connection and reopen this form.
+                    </p>
+                  ) : (
                   <select
                     value={hallId}
                     onChange={(e) => setHallId(e.target.value)}
@@ -326,6 +338,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                       </option>
                     ))}
                   </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Room *</label>
