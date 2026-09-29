@@ -154,6 +154,21 @@ export class SupabaseRepository implements Repository {
     });
     if (error) throw error;
     if (!authData.user) throw new Error('Failed to register user account.');
+    // No trigger creates the profile row (triggers on auth.users need the
+    // dashboard Auth Hook), so insert it explicitly. RLS profiles_insert_own
+    // scopes the row to the new user's id.
+    const { error: profileError } = await this.client.from('profiles').insert({
+      id: authData.user.id,
+      full_name: data.fullName || 'Student',
+      username: data.username || cleanEmail.split('@')[0],
+      school_email: cleanEmail,
+      personal_email: (data.personalEmail || '').trim().toLowerCase() || null,
+      hall_id: data.hallId,
+      room_number: data.roomNumber || '',
+      gender: data.gender || 'male',
+      telegram_handle: data.telegramHandle || '',
+    });
+    if (profileError) throw profileError;
     const profile = await this.getUserById(authData.user.id);
     return profile || (await this.getCurrentUser())!;
   }
@@ -523,11 +538,12 @@ export class SupabaseRepository implements Repository {
   }
 
   async createReview(review: Omit<Review, 'id' | 'createdAt'>): Promise<Review> {
+    // reviews table uses reviewer_id (the eligibility trigger checks it).
     const payload = {
       listing_id: review.listingId,
       sub_order_id: review.subOrderId || null,
       order_id: review.orderId,
-      buyer_id: review.reviewerId,
+      reviewer_id: review.reviewerId,
       seller_id: review.sellerId || null,
       rating: review.rating,
       comment: review.comment,
@@ -594,7 +610,9 @@ export class SupabaseRepository implements Repository {
   }
 
   async blockUser(threadId: string, blockerId: string): Promise<void> {
-    const { error } = await this.client.from('chat_threads').update({ is_blocked: true, blocked_by: blockerId }).eq('id', threadId);
+    // chat_threads carries is_blocked_by (see schema); the reader accepts the
+    // legacy blocked_by name as a fallback.
+    const { error } = await this.client.from('chat_threads').update({ is_blocked_by: blockerId }).eq('id', threadId);
     if (error) throw error;
   }
 
@@ -896,7 +914,7 @@ export class SupabaseRepository implements Repository {
       listingId: row.listing_id,
       subOrderId: row.sub_order_id || '',
       orderId: row.order_id,
-      reviewerId: row.buyer_id,
+      reviewerId: row.reviewer_id || row.buyer_id,
       sellerId: row.seller_id,
       rating: Number(row.rating),
       comment: row.comment,
@@ -928,7 +946,7 @@ export class SupabaseRepository implements Repository {
       lastMessageAt: row.last_message_timestamp || row.last_message_at || row.created_at,
       isRequest: row.is_request || false,
       isReported: row.is_reported || false,
-      isBlockedBy: row.blocked_by,
+      isBlockedBy: row.is_blocked_by || row.blocked_by,
     };
   }
 
