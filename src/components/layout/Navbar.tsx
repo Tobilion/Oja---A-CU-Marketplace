@@ -36,6 +36,7 @@ interface NavbarProps {
   onOpenCreateBusiness: () => void;
   onOpenSellerPortal: () => void;
   onOpenAgentPortal: () => void;
+  onOpenFeedback: () => void;
   onOpenAuth: () => void;
 }
 
@@ -51,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateBusiness,
   onOpenSellerPortal,
   onOpenAgentPortal,
+  onOpenFeedback,
   onOpenAuth,
 }) => {
   const { currentUser, allUsers, switchUser, isMock, signOut } = useAuth();
@@ -82,13 +84,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <span>Demo Mode (Local Database active · All orders, fees, RLS simulated)</span>
           </div>
-          <button
-            onClick={() => setShowRoleSwitcher((prev) => !prev)}
-            className="hover:underline flex items-center gap-1 font-semibold text-amber-800 dark:text-amber-300"
-          >
-            <span>Role Switcher</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onOpenFeedback}
+              className="hover:underline font-semibold text-amber-800 dark:text-amber-300"
+            >
+              Report issue or idea
+            </button>
+            <button
+              onClick={() => setShowRoleSwitcher((prev) => !prev)}
+              className="hover:underline flex items-center gap-1 font-semibold text-amber-800 dark:text-amber-300"
+            >
+              <span>Role Switcher</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       )}
 

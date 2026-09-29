@@ -52,3 +52,9 @@ export const FOUNDING_SUPER_ADMIN_EMAILS = [
 ];
 
 export const OJA_BRAND_NAME = 'Oja';
+
+export const APP_VERSION = '0.1.0';
+
+// 6.3 feedback destinations (human-owned, safe to ship in client code).
+export const FEEDBACK_WHATSAPP_NUMBER = '2347073948340';
+export const FEEDBACK_EMAIL = 'tobilobajagun@gmail.com';

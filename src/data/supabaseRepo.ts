@@ -11,6 +11,7 @@ import {
   AvailableDelivery,
 } from './repo';
 import { isOnlyDeliveryAgentDiff } from '../utils/adminGuards';
+import { logUserAction } from '../utils/feedback';
 import {
   UserProfile,
   Listing,
@@ -28,6 +29,8 @@ import {
   Hall,
   Category,
   BankDetails,
+  FeedbackItem,
+  FeedbackStatus,
 } from '../types';
 
 export class SupabaseRepository implements Repository {
@@ -450,6 +453,7 @@ export class SupabaseRepository implements Repository {
 
     const createdOrder = await this.fetchFullOrder(orderId);
     if (!createdOrder) throw new Error('Failed to retrieve placed order.');
+    logUserAction(`place order ${createdOrder.orderNumber}`);
     return createdOrder;
   }
 
@@ -463,6 +467,7 @@ export class SupabaseRepository implements Repository {
       p_note: note || null,
     });
     if (error) throw error;
+    logUserAction(`advance to ${nextState}`);
     return (await this.fetchFullOrder(orderId))!;
   }
 
@@ -711,6 +716,40 @@ export class SupabaseRepository implements Repository {
 
   async resolveReport(reportId: string, action: 'resolved' | 'dismissed'): Promise<void> {
     const { error } = await this.client.from('reports').update({ status: action }).eq('id', reportId);
+    if (error) throw error;
+  }
+
+  // --- Feedback (6.3: feedback table in Supabase mode) ---
+  async saveFeedback(fb: Omit<FeedbackItem, 'id' | 'status' | 'createdAt'>): Promise<FeedbackItem> {
+    const payload = {
+      type: fb.type,
+      message: fb.message,
+      contact: fb.contact || null,
+      persona_name: fb.personaName || null,
+      route: fb.route,
+      context: fb.context,
+      app_mode: fb.appMode,
+      app_version: fb.appVersion,
+      browser: fb.browser,
+      viewport: fb.viewport,
+      timestamp: fb.timestamp,
+      breadcrumbs: fb.breadcrumbs,
+      last_error: fb.lastError || null,
+      status: 'new',
+    };
+    const { data, error } = await this.client.from('feedback').insert(payload).select().single();
+    if (error) throw error;
+    return this.mapFeedback(data);
+  }
+
+  async getFeedbacks(): Promise<FeedbackItem[]> {
+    const { data, error } = await this.client.from('feedback').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(this.mapFeedback);
+  }
+
+  async updateFeedbackStatus(id: string, status: FeedbackStatus): Promise<void> {
+    const { error } = await this.client.from('feedback').update({ status }).eq('id', id);
     if (error) throw error;
   }
 
@@ -1115,8 +1154,28 @@ export class SupabaseRepository implements Repository {
     };
   }
 
-  private mapAuditLog(row: any): AuditLogEntry {
+  private mapFeedback(row: any): FeedbackItem {
     return {
+      id: row.id,
+      type: row.type,
+      message: row.message,
+      contact: row.contact || undefined,
+      personaName: row.persona_name || undefined,
+      route: row.route,
+      context: row.context,
+      appMode: row.app_mode,
+      appVersion: row.app_version,
+      browser: row.browser,
+      viewport: row.viewport,
+      timestamp: row.timestamp,
+      breadcrumbs: row.breadcrumbs || [],
+      lastError: row.last_error || undefined,
+      status: row.status,
+      createdAt: row.created_at,
+    };
+  }
+
+  private mapAuditLog(row: any): AuditLogEntry {    return {
       id: row.id,
       adminId: row.admin_id,
       adminEmail: row.admin_email || '',

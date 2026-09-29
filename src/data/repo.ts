@@ -7,6 +7,8 @@ import {
   UserProfile,
   UserBadge,
   AdminLevel,
+  FeedbackItem,
+  FeedbackStatus,
   Listing,
   Business,
   Order,
@@ -135,6 +137,11 @@ export interface Repository {
   createReport(report: Omit<Report, 'id' | 'createdAt' | 'status'>): Promise<Report>;
   getReports(): Promise<Report[]>;
   resolveReport(reportId: string, action: 'resolved' | 'dismissed'): Promise<void>;
+
+  // Feedback (6.3)
+  saveFeedback(fb: Omit<FeedbackItem, 'id' | 'status' | 'createdAt'>): Promise<FeedbackItem>;
+  getFeedbacks(): Promise<FeedbackItem[]>;
+  updateFeedbackStatus(id: string, status: FeedbackStatus): Promise<void>;
 
   // Chat
   getThreadsForUser(userId: string): Promise<ChatThread[]>;

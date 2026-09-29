@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
-import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge } from '../../types';
+import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge, FeedbackItem } from '../../types';
 import { AdminUserUpdates } from '../../data';
 import { useListQuery } from '../../hooks/useListQuery';
 import { ListControls } from '../common/ListControls';
@@ -45,7 +45,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const { showToast } = useNotifications();
 
   const [activeTab, setActiveTab] = useState<
-    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit' | 'deliveries' | 'agents'
+    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit' | 'deliveries' | 'agents' | 'feedback'
   >('today');
 
   // 5.4 role-scoped portals. A moderator sees moderation queues, a payment
@@ -59,7 +59,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const canSee = (tab: string): boolean => {
     if (isSuperAdmin(effectiveLevel)) return true;
     if (canModerate(effectiveLevel)) {
-      return ['today', 'sellers', 'businesses', 'reports', 'users'].includes(tab);
+      return ['today', 'sellers', 'businesses', 'reports', 'users', 'feedback'].includes(tab);
     }
     if (canVerifyPayments(effectiveLevel)) {
       return ['today', 'payments', 'payouts'].includes(tab);
@@ -80,24 +80,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [reports, setReports] = useState<Report[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
+  const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([]);
   const [newHallName, setNewHallName] = useState('');
   const [newHallGender, setNewHallGender] = useState<'male' | 'female'>('male');
   const [isProcessing, setIsProcessing] = useState(false);
   const modalRef = useModalEscape(true, onClose);
 
   const loadData = async () => {
-    const [ords, bizs, reps, logs, hls] = await Promise.all([
+    const [ords, bizs, reps, logs, hls, fbs] = await Promise.all([
       repo.getAllOrders(),
       repo.getBusinesses(),
       repo.getReports(),
       repo.getAuditLogs(),
       repo.getHalls(),
+      repo.getFeedbacks().catch(() => [] as FeedbackItem[]),
     ]);
     setOrders(ords);
     setBusinesses(bizs);
     setReports(reps);
     setAuditLogs(logs);
     setHalls(hls);
+    setFeedbacks(fbs);
   };
 
   useEffect(() => {
@@ -180,6 +183,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const agents = allUsers.filter((u) => u.badges.includes('Delivery Agent'));
 
+  const newFeedbacks = feedbacks.filter((f) => f.status === 'new');
+
   // 5.4 role portal tabs: label + live count, filtered by canSee at render.
   const portalTabs: { id: typeof activeTab; label: (counts: boolean) => string }[] = [
     { id: 'today', label: () => 'Today Cockpit' },
@@ -192,6 +197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'agents', label: () => `Agents (${agents.length})` },
     { id: 'payouts', label: () => `Payouts (${payoutsDue.length})` },
     { id: 'users', label: () => `Users (${allUsers.length})` },
+    { id: 'feedback', label: () => `Feedback (${newFeedbacks.length})` },
     { id: 'halls', label: () => `Halls (${halls.length})` },
     { id: 'audit', label: () => 'Audit Log' },
   ];
@@ -275,6 +281,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     sortOptions: [{ id: 'name', label: 'Name A-Z', compare: (a, b) => a.name.localeCompare(b.name) }],
     pageSize: 12,
   });
+
+  const feedbackQuery = useListQuery<FeedbackItem>({
+    items: feedbacks,
+    searchText: (f) => `${f.type} ${f.status} ${f.message} ${f.route} ${f.personaName || ''}`,
+    sortOptions: [
+      { id: 'newest', label: 'Newest first', compare: (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt) },
+      { id: 'status', label: 'New first', compare: (a, b) => a.status.localeCompare(b.status) },
+    ],
+    pageSize: 8,
+  });
+
+  const handleFeedbackStatus = async (id: string, status: FeedbackItem['status']) => {
+    try {
+      await repo.updateFeedbackStatus(id, status);
+      await loadData();
+    } catch (err: any) {
+      showToast(err?.message || 'Feedback update failed', 'error');
+    }
+  };
 
   // 5.4 logistics board queries.
   const deliveryQuery = useListQuery<{ order: Order; sub: SubOrder }>({
@@ -1393,6 +1418,80 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   );
                 })
+              )}
+            </div>
+          )}
+
+          {/* 8b. FEEDBACK QUEUE (Super admin + Moderator) */}
+          {activeTab === 'feedback' && canSee('feedback') && (
+            <div className="space-y-3">
+              <ListControls
+                query={feedbackQuery.query}
+                onQueryChange={feedbackQuery.setQuery}
+                searchPlaceholder="Search type, message, route..."
+                sortId={feedbackQuery.sortId}
+                onSortChange={feedbackQuery.setSortId}
+                sortOptions={feedbackQuery.sortOptions}
+                page={feedbackQuery.page}
+                totalPages={feedbackQuery.totalPages}
+                onPageChange={feedbackQuery.setPage}
+                total={feedbackQuery.total}
+                itemLabel="reports"
+              />
+              {feedbackQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {feedbackQuery.query ? 'No feedback matches this search.' : 'No user feedback yet.'}
+                </p>
+              ) : (
+                feedbackQuery.pageItems.map((f) => (
+                  <div key={f.id} className="p-3.5 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-bold uppercase">
+                          {f.type}
+                        </span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${
+                            f.status === 'new'
+                              ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20'
+                              : f.status === 'seen'
+                                ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20'
+                                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+                          }`}
+                        >
+                          {f.status}
+                        </span>
+                        <span className="text-[10px] font-mono text-[var(--color-text-muted)]">
+                          {new Date(f.createdAt).toLocaleString()} · {f.route} · {f.appMode} v{f.appVersion}
+                        </span>
+                      </div>
+                      <span className="flex gap-1 shrink-0">
+                        {(['seen', 'fixed'] as const).map((s) => (
+                          <button
+                            key={s}
+                            disabled={f.status === s}
+                            onClick={() => handleFeedbackStatus(f.id, s)}
+                            className="px-2 py-0.5 rounded border border-[var(--color-border)] text-[11px] capitalize disabled:opacity-40"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--color-text-main)]">{f.message}</p>
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      {[f.personaName && `Persona: ${f.personaName}`, f.contact && `Contact: ${f.contact}`, `${f.browser} ${f.viewport}`, f.context && `via ${f.context}`]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                    {f.breadcrumbs.length > 0 && (
+                      <p className="text-[10px] font-mono text-[var(--color-text-muted)]">
+                        {f.breadcrumbs.slice(-5).join(' → ')}
+                      </p>
+                    )}
+                    {f.lastError && <p className="text-[10px] font-mono text-red-500">Last error: {f.lastError}</p>}
+                  </div>
+                ))
               )}
             </div>
           )}

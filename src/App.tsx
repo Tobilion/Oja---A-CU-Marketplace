@@ -30,10 +30,17 @@ import { ReviewModal } from './components/marketplace/ReviewModal';
 import { Footer } from './components/layout/Footer';
 import { Listing, Category, Hall, Business, Order, UserProfile } from './types';
 import { repo, isSupabaseConfigMissing } from './data';
-import { AlertOctagon, Terminal } from 'lucide-react';
+import { AlertOctagon, Terminal, MessageCircle } from 'lucide-react';
+import { FeedbackModal } from './components/feedback/FeedbackModal';
+import { installGlobalFeedbackCapture, logUserAction } from './utils/feedback';
 
 function AppContent() {
   const { currentUser, allUsers, refreshUser } = useAuth();
+  const [feedbackContext, setFeedbackContext] = useState<string | null>(null);
+
+  useEffect(() => {
+    installGlobalFeedbackCapture();
+  }, []);
 
   if (isSupabaseConfigMissing) {
     return (
@@ -56,7 +63,17 @@ function AppContent() {
             <p className="text-amber-400">1. For local testing & review: set VITE_APP_MODE=demo in .env</p>
             <p className="text-sky-400">2. For live deployment: execute supabase/schema.sql and supply valid credentials.</p>
           </div>
+          <button
+            onClick={() => {
+              logUserAction('open feedback (error-screen)');
+              setFeedbackContext('error-screen');
+            }}
+            className="w-full px-4 py-2 rounded-xl border border-neutral-700 text-xs font-semibold text-neutral-300 hover:bg-neutral-800 flex items-center justify-center gap-1.5"
+          >
+            <MessageCircle className="w-3.5 h-3.5" /> Report an Issue
+          </button>
         </div>
+        {feedbackContext && <FeedbackModal context={feedbackContext} onClose={() => setFeedbackContext(null)} />}
       </div>
     );
   }
@@ -146,8 +163,11 @@ function AppContent() {
       setIsSellerApplyOpen(false);
       setIsRecycleBinOpen(false);
       setIsAdminOpen(false);
+      setIsSellerPortalOpen(false);
+      setIsAgentPortalOpen(false);
       setIsAuthOpen(false);
       setReviewTarget(null);
+      setFeedbackContext(null);
     };
     window.addEventListener('oja:logout', closeAllOverlays);
     return () => window.removeEventListener('oja:logout', closeAllOverlays);
@@ -196,6 +216,10 @@ function AppContent() {
         onOpenCreateBusiness={() => setIsCreateBusinessOpen(true)}
         onOpenSellerPortal={() => setIsSellerPortalOpen(true)}
         onOpenAgentPortal={() => setIsAgentPortalOpen(true)}
+        onOpenFeedback={() => {
+          logUserAction('open feedback (demo-bar)');
+          setFeedbackContext('demo-bar');
+        }}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
 
@@ -427,6 +451,21 @@ function AppContent() {
       )}
 
       <Footer />
+
+      {/* 6.3 floating feedback button on every screen */}
+      <button
+        onClick={() => {
+          logUserAction('open feedback (floating-button)');
+          setFeedbackContext('floating-button');
+        }}
+        aria-label="Report issue or idea"
+        title="Report issue or idea"
+        className="fixed bottom-6 left-6 z-40 p-3 rounded-full bg-[var(--color-brand-primary)] text-white shadow-xl hover:opacity-90 transition-opacity"
+      >
+        <MessageCircle className="w-5 h-5" />
+      </button>
+
+      {feedbackContext && <FeedbackModal context={feedbackContext} onClose={() => setFeedbackContext(null)} />}
     </div>
   );
 }

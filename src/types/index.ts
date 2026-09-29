@@ -366,3 +366,29 @@ export interface AppSettings {
   latePenaltyRatePercent: number; // e.g. 5% per late day
   lateThresholdDaysAlert: number; // 2 days
 }
+
+export type FeedbackType = 'bug' | 'confusing' | 'idea';
+export type FeedbackStatus = 'new' | 'seen' | 'fixed';
+
+/**
+ * 6.3 user-submitted issue/idea report. Auto-captured context only; never
+ * passwords or personal data beyond the persona name and optional contact.
+ */
+export interface FeedbackItem {
+  id: string;
+  type: FeedbackType;
+  message: string;
+  contact?: string;
+  personaName?: string;
+  route: string;
+  context: string;
+  appMode: string;
+  appVersion: string;
+  browser: string;
+  viewport: string;
+  timestamp: string;
+  breadcrumbs: string[];
+  lastError?: string;
+  status: FeedbackStatus;
+  createdAt: string;
+}

@@ -17,6 +17,7 @@ import {
   AppSettings,
   Hall,
   Category,
+  FeedbackItem,
 } from '../types';
 import { SEED_USERS, SEED_BUSINESSES } from './seedUsers';
 import { SEED_LISTINGS } from './seedListings';
@@ -145,4 +146,7 @@ export const MockStorage = {
 
   getEmailOutbox: (): any[] => loadOrSeed('email_outbox', []),
   setEmailOutbox: (emails: any[]) => save('email_outbox', emails),
+
+  getFeedbacks: (): FeedbackItem[] => loadOrSeed('feedbacks', []),
+  setFeedbacks: (items: FeedbackItem[]) => save('feedbacks', items),
 };

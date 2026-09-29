@@ -1335,3 +1335,39 @@ BEGIN
     RETURN result;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 12. PHASE-6 FEEDBACK QUEUE (appended; sections 1-11 untouched)
+-- Anyone (signed in or not) may insert a report; only admins may read or
+-- triage. Read-only reviewed here, NOT executed live.
+CREATE TABLE IF NOT EXISTS public.feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type TEXT NOT NULL CHECK (type IN ('bug', 'confusing', 'idea')),
+    message TEXT NOT NULL,
+    contact TEXT,
+    persona_name TEXT,
+    route TEXT NOT NULL DEFAULT '/',
+    context TEXT NOT NULL DEFAULT 'unknown',
+    app_mode TEXT NOT NULL DEFAULT 'demo',
+    app_version TEXT NOT NULL DEFAULT '0.1.0',
+    browser TEXT NOT NULL DEFAULT 'unknown',
+    viewport TEXT NOT NULL DEFAULT 'unknown',
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+    breadcrumbs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    last_error TEXT,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'seen', 'fixed')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON public.feedback(status);
+ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS feedback_anyone_insert ON public.feedback;
+CREATE POLICY feedback_anyone_insert ON public.feedback FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS feedback_admin_read ON public.feedback;
+CREATE POLICY feedback_admin_read ON public.feedback FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+DROP POLICY IF EXISTS feedback_admin_update ON public.feedback;
+CREATE POLICY feedback_admin_update ON public.feedback FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+) WITH CHECK (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);

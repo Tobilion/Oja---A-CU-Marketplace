@@ -26,12 +26,15 @@ import {
   Hall,
   Category,
   BankDetails,
+  FeedbackItem,
+  FeedbackStatus,
 } from '../types';
 import { MockStorage, pickCurrentUser } from './mockStorage';
 import { calculateOrderDeliveryFee, calculateLatePenalty } from '../utils/deliveryFee';
 import { VALID_ORDER_TRANSITIONS, validateOrderTransition, deriveOrderActorRole } from '../utils/transitions';
 import { FOUNDING_SUPER_ADMIN_EMAILS } from '../config/appConfig';
 import { isOnlyDeliveryAgentDiff } from '../utils/adminGuards';
+import { logUserAction } from '../utils/feedback';
 
 export class MockRepository implements Repository {
   readonly isMock = true;
@@ -755,6 +758,7 @@ export class MockRepository implements Repository {
     });
     MockStorage.setEmailOutbox(emails);
 
+    logUserAction(`place order ${newOrder.orderNumber}`);
     return newOrder;
   }
 
@@ -802,6 +806,7 @@ export class MockRepository implements Repository {
 
     order.updatedAt = new Date().toISOString();
     MockStorage.setOrders(orders);
+    logUserAction(`advance ${order.orderNumber} to ${nextState}`);
     return order;
   }
 
@@ -1408,6 +1413,28 @@ export class MockRepository implements Repository {
       rep.status = action;
       rep.resolvedAt = new Date().toISOString();
       MockStorage.setReports(reports);
+    }
+  }
+
+  // --- Feedback (6.3: local queue in mock mode) ---
+  async saveFeedback(fb: Omit<FeedbackItem, 'id' | 'status' | 'createdAt'>): Promise<FeedbackItem> {
+    const items = MockStorage.getFeedbacks();
+    const entry: FeedbackItem = { ...fb, id: 'fb_' + Date.now(), status: 'new', createdAt: new Date().toISOString() };
+    items.unshift(entry);
+    MockStorage.setFeedbacks(items);
+    return entry;
+  }
+
+  async getFeedbacks(): Promise<FeedbackItem[]> {
+    return MockStorage.getFeedbacks().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async updateFeedbackStatus(id: string, status: FeedbackStatus): Promise<void> {
+    const items = MockStorage.getFeedbacks();
+    const item = items.find((f) => f.id === id);
+    if (item) {
+      item.status = status;
+      MockStorage.setFeedbacks(items);
     }
   }
 
