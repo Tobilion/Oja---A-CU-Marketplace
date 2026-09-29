@@ -813,3 +813,73 @@ CREATE POLICY audit_admin_insert ON public.audit_logs FOR INSERT WITH CHECK (
 -- (c) client OAuth hd hint (already sent) for UX only, never trusted.
 -- Triggers on auth.users cannot be created from the SQL editor, so (b) is a
 -- manual dashboard step documented in GO_LIVE.md (Phase 7).
+
+-- 9. PHASE-2 SCHEMA REPAIR (appended; does not alter sections 1-8)
+-- Why: place_order and the review trigger referenced public.order_items, which
+-- was never created, and several repository calls used columns that did not
+-- exist (business join/transfer requests, review seller/agent rating).
+-- Schema is reviewed read-only here, NOT executed (no local Postgres yet).
+
+-- 9.1 Order line items (one row per listing inside a sub-order)
+CREATE TABLE IF NOT EXISTS public.order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sub_order_id UUID NOT NULL REFERENCES public.sub_orders(id) ON DELETE CASCADE,
+    listing_id UUID NOT NULL REFERENCES public.listings(id),
+    title TEXT NOT NULL,
+    price BIGINT NOT NULL CHECK (price >= 0),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    image TEXT NOT NULL DEFAULT '',
+    category_id TEXT REFERENCES public.categories(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_order_items_sub_order ON public.order_items(sub_order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_listing ON public.order_items(listing_id);
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+-- Reads follow the parent sub-order visibility; writes happen only inside the
+-- place_order RPC (SECURITY DEFINER), so no INSERT/UPDATE policy is granted.
+DROP POLICY IF EXISTS order_items_participant_read ON public.order_items;
+CREATE POLICY order_items_participant_read ON public.order_items FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM public.sub_orders s WHERE s.id = order_items.sub_order_id AND (
+      s.seller_id = auth.uid() OR s.agent_id = auth.uid() OR
+      EXISTS (SELECT 1 FROM public.orders o WHERE o.id = s.order_id AND o.buyer_id = auth.uid()) OR
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+    )
+  )
+);
+
+-- 9.2 Business membership queues used by the repository
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS join_requests UUID[] NOT NULL DEFAULT ARRAY[]::UUID[];
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS transfer_request JSONB;
+
+-- 9.3 Review seller/agent columns used by the repository
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS seller_id UUID REFERENCES public.profiles(id);
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS agent_id UUID REFERENCES public.profiles(id);
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS agent_rating SMALLINT CHECK (agent_rating IS NULL OR (agent_rating >= 1 AND agent_rating <= 5));
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS agent_comment TEXT;
+
+-- 9.4 Review eligibility trigger: the reviews table carries reviewer_id
+-- (not buyer_id), so the check must read NEW.reviewer_id. public.order_items
+-- now exists, so the JOIN below resolves.
+CREATE OR REPLACE FUNCTION public.validate_review_eligibility()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM public.orders o
+        JOIN public.sub_orders s ON s.order_id = o.id
+        JOIN public.order_items i ON i.sub_order_id = s.id
+        WHERE o.buyer_id = NEW.reviewer_id
+          AND i.listing_id = NEW.listing_id
+          AND s.status = 'completed'
+    ) THEN
+        RAISE EXCEPTION 'Reviews are restricted to verified buyers who completed an order for this item.';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_validate_review_eligibility ON public.reviews;
+CREATE TRIGGER trg_validate_review_eligibility
+BEFORE INSERT ON public.reviews
+FOR EACH ROW EXECUTE FUNCTION public.validate_review_eligibility();
