@@ -83,6 +83,9 @@ function AppContent() {
   const [halls, setHalls] = useState<Hall[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
+  // Visible when the database is unreachable (DNS/filtered network), so an
+  // empty marketplace is never mistaken for an empty database.
+  const [connectivityError, setConnectivityError] = useState(false);
 
   // Active Modals & Drawers
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -124,8 +127,10 @@ function AppContent() {
       setCategories(c);
       setHalls(h);
       setBusinesses(b);
+      setConnectivityError(false);
     } catch (e) {
       console.error('Failed to load marketplace data', e);
+      setConnectivityError(true);
     } finally {
       setLoading(false);
     }
@@ -222,6 +227,25 @@ function AppContent() {
         }}
         onOpenAuth={() => setIsAuthOpen(true)}
       />
+
+      {connectivityError && (
+        <div className="bg-red-500/10 border-b border-red-500/20 text-red-800 dark:text-red-300 px-4 py-2 text-xs flex flex-col sm:flex-row items-center justify-center gap-2 text-center">
+          <span>
+            <strong>Can't reach the Oja database.</strong> Check your connection (some campus networks block
+            external services), disable ad-blockers/VPN, then retry.
+          </span>
+          <button
+            onClick={() => {
+              setLoading(true);
+              setConnectivityError(false);
+              loadMarketplaceData();
+            }}
+            className="px-3 py-1 rounded-lg bg-red-600 text-white font-semibold shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <MarketplaceHome
         listings={listings}
