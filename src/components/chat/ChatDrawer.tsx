@@ -22,6 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -45,6 +46,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newContent, setNewContent] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const modalRef = useModalEscape(isOpen, onClose);
 
   const loadThreads = async () => {
     if (!currentUser) return;
@@ -157,7 +159,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     : null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-150">
       <div className="w-full max-w-md bg-[var(--color-surface)] h-full shadow-2xl flex flex-col border-l border-[var(--color-border)] animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between">

@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatNaira } from '../../utils/money';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface CheckoutModalProps {
   halls: Hall[];
@@ -40,6 +41,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [transferReference, setTransferReference] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const modalRef = useModalEscape(true, onClose);
 
   const activeHall = halls.find((h) => h.id === hallId);
 
@@ -100,7 +102,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">

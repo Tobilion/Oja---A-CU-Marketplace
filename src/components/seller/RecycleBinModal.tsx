@@ -10,6 +10,7 @@ import { repo } from '../../data';
 import { useAuth } from '../../context/AuthContext';
 import { formatNaira } from '../../utils/money';
 import { useNotifications } from '../../context/NotificationContext';
+import { useModalEscape } from '../../hooks/useModalEscape';
 import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface RecycleBinModalProps {
@@ -26,6 +27,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
 
   const [recycledListings, setRecycledListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const modalRef = useModalEscape(true, onClose);
 
   const loadRecycled = async () => {
     setLoading(true);
@@ -61,7 +63,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">

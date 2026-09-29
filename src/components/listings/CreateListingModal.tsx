@@ -13,6 +13,7 @@ import { repo } from '../../data';
 import { REQUIRE_LISTING_PHOTOS } from '../../config/appConfig';
 import { validatePhotoCount } from '../../utils/listingPhotos';
 import { compressImageClientSide } from '../../utils/imageCompress';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface CreateListingModalProps {
   categories: Category[];
@@ -60,6 +61,7 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
   }, [title, categoryId]);
 
   const activeCategory = categories.find((c) => c.id === categoryId);
+  const modalRef = useModalEscape(true, onClose);
 
   // Client-side photo handling: M-04 compresses to max ~1000px JPEG ~0.75 so
   // demo-mode localStorage never holds raw multi-megabyte uploads.
@@ -158,7 +160,7 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">

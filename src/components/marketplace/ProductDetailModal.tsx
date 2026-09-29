@@ -24,6 +24,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
+import { useModalEscape } from '../../hooks/useModalEscape';
 import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface ProductDetailModalProps {
@@ -56,6 +57,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [reportReason, setReportReason] = useState('Academic dishonesty / Exam fraud');
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
+  const modalRef = useModalEscape(true, onClose);
 
   useEffect(() => {
     repo.getReviewsForListing(listing.id).then(setReviews);
@@ -94,7 +96,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">

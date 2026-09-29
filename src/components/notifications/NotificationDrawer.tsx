@@ -7,6 +7,7 @@ import React from 'react';
 import { X, Bell, CheckCircle2, Clock, Send, ShieldCheck, ShoppingBag } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
 import { AppNotification } from '../../types';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface NotificationDrawerProps {
   isOpen: boolean;
@@ -20,11 +21,12 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onNavigateToOrder,
 }) => {
   const { notifications, markAsRead } = useNotifications();
+  const modalRef = useModalEscape(isOpen, onClose);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-150">
       <div className="w-full max-w-md bg-[var(--color-surface)] h-full shadow-2xl flex flex-col border-l border-[var(--color-border)] animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between">

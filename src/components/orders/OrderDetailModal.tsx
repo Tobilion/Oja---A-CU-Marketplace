@@ -22,6 +22,7 @@ import { formatHallName } from '../../utils/formatHall';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface OrderDetailModalProps {
   order: Order;
@@ -43,6 +44,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
   const [codeError, setCodeError] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const modalRef = useModalEscape(true, onClose);
 
   const isBuyer = currentUser?.id === order.buyerId;
   const isSuperAdmin = currentUser?.adminLevel === 'super_admin' || currentUser?.badges.includes('Admin');
@@ -125,7 +127,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">

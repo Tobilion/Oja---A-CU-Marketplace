@@ -10,6 +10,7 @@ import { ListingCard } from '../marketplace/ListingCard';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
 import { useNotifications } from '../../context/NotificationContext';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface BusinessStorefrontModalProps {
   business: Business;
@@ -35,6 +36,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
     currentUser ? business.followerIds.includes(currentUser.id) : false
   );
   const [followerCount, setFollowerCount] = useState(business.followerIds.length);
+  const modalRef = useModalEscape(true, onClose);
 
   const shopListings = listings.filter(
     (l) => (l.businessId === business.id || l.sellerId === business.ownerId) && l.status === 'active'
@@ -57,7 +59,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Banner */}
         <div className="relative h-44 sm:h-52 w-full bg-neutral-900 overflow-hidden">

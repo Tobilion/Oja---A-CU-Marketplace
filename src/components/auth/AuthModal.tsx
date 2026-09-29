@@ -9,6 +9,7 @@ import { Hall, Gender } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { IS_DEMO_MODE } from '../../config/appConfig';
+import { useModalEscape } from '../../hooks/useModalEscape';
 
 interface AuthModalProps {
   halls: Hall[];
@@ -40,6 +41,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const modalRef = useModalEscape(true, onClose);
 
   const handleGoogleSchoolSignIn = async () => {
     setErrorMsg(null);
@@ -152,7 +154,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">

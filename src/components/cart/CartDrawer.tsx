@@ -11,6 +11,7 @@ import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
 import { Order } from '../../types';
 import { repo } from '../../data';
+import { useModalEscape } from '../../hooks/useModalEscape';
 import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
 
 interface CartDrawerProps {
@@ -37,6 +38,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       repo.getOrdersForUser(currentUser.id).then(setUserOrders);
     }
   }, [isOpen, currentUser]);
+  const modalRef = useModalEscape(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -44,7 +46,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const deliveredOrders = userOrders.filter((o) => o.status === 'completed' || o.status === 'delivered');
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-150">
+    <div ref={modalRef} className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-150">
       <div className="w-full max-w-md bg-[var(--color-surface)] h-full shadow-2xl flex flex-col border-l border-[var(--color-border)] animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="p-4 border-b border-[var(--color-border)] flex items-center justify-between">
