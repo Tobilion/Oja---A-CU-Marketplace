@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+:root {
+  --color-bg-base: #FBFBF9;
+  --color-surface: #FFFFFF;
+  --color-surface-subtle: #F4F4F0;
+  --color-border: #E8E8E2;
+  --color-text-main: #141413;
+  --color-text-muted: #6E6E66;
+  --color-accent: #0F172A;
+  --color-accent-hover: #1E293B;
+  --color-accent-fg: #FFFFFF;
+  --color-brand-primary: #15803D; /* Covenant Emerald green tone */
+  --color-brand-gold: #D97706;
+}
+
+.dark {
+  --color-bg-base: #121212;
+  --color-surface: #1A1A1A;
+  --color-surface-subtle: #242424;
+  --color-border: #2D2D2D;
+  --color-text-main: #EDEDEB;
+  --color-text-muted: #9E9E96;
+  --color-accent: #F4F4F5;
+  --color-accent-hover: #FFFFFF;
+  --color-accent-fg: #09090B;
+  --color-brand-primary: #22C55E;
+  --color-brand-gold: #F59E0B;
+}
+
+/* Yoruba Theme Accent Reskin */
+.theme-yoruba {
+  --color-brand-primary: #1E2B4D; /* Adire Indigo */
+  --color-brand-gold: #C85A32; /* Warm Terracotta */
+}
+
+.dark.theme-yoruba {
+  --color-brand-primary: #435A94; /* Vivid Indigo for dark mode */
+  --color-brand-gold: #E07347; /* Bright Terracotta */
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-main);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Custom scrollbar for dense data views */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.4);
+}

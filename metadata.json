@@ -1,0 +1,6 @@
+{
+  "name": "Oja — Covenant University Campus Marketplace",
+  "description": "Campus trade, kept honest. Verified student marketplace for Covenant University with escrow protection, student businesses, and vetted hall delivery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
