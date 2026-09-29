@@ -333,7 +333,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                       className="p-3 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] cursor-pointer transition-colors flex items-center gap-3"
                     >
                       <img
-                        src={partner?.avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=thread'}
+                        src={partner?.avatarUrl || '/seed/avatar-default.svg'}
                         alt=""
                         className="w-10 h-10 rounded-full border border-[var(--color-border)] object-cover shrink-0"
                       />

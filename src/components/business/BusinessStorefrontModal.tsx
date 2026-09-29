@@ -130,7 +130,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
         {/* Banner */}
         <div className="relative h-44 sm:h-52 w-full bg-neutral-900 overflow-hidden">
           <img
-            src={business.banner || 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80'}
+            src={business.banner || '/seed/banner-default.svg'}
             alt=""
             className="w-full h-full object-cover opacity-80"
           />
@@ -148,7 +148,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-14 mb-4">
             <div className="flex items-end gap-4">
               <img
-                src={business.logo || 'https://api.dicebear.com/7.x/identicon/svg?seed=biz'}
+                src={business.logo || '/seed/logo-default.svg'}
                 alt=""
                 className="w-24 h-24 rounded-2xl border-4 border-[var(--color-surface)] shadow-md bg-white object-cover shrink-0"
               />

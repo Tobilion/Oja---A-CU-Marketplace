@@ -193,7 +193,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 className="flex items-center gap-3 cursor-pointer group"
               >
                 <img
-                  src={seller?.avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=seller'}
+                  src={seller?.avatarUrl || '/seed/avatar-default.svg'}
                   alt=""
                   className="w-10 h-10 rounded-full border border-[var(--color-border)] object-cover"
                   referrerPolicy="no-referrer"

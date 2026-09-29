@@ -274,7 +274,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 aria-label="User account menu"
               >
                 <img
-                  src={currentUser.avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
+                  src={currentUser.avatarUrl || '/seed/avatar-default.svg'}
                   alt={currentUser.fullName}
                   className="w-8 h-8 rounded-full border border-[var(--color-border)] object-cover bg-neutral-200"
                   referrerPolicy="no-referrer"
