@@ -67,8 +67,14 @@ function loadOrSeed<T>(key: string, seed: T): T {
 function save<T>(key: string, data: T) {
   try {
     localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data));
-  } catch (e) {
+  } catch (e: any) {
+    // M-04: localStorage quota is finite (~5MB). Compression (imageCompress)
+    // keeps listings small; if the quota is still exceeded, tell the user
+    // visibly instead of failing silently.
     console.error('Failed to save to mock storage', e);
+    if (e && (e.name === 'QuotaExceededError' || e.code === 22)) {
+      window.dispatchEvent(new Event('oja:storage-full'));
+    }
   }
 }
 

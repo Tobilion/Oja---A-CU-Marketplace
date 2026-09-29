@@ -12,6 +12,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { repo } from '../../data';
 import { REQUIRE_LISTING_PHOTOS } from '../../config/appConfig';
 import { validatePhotoCount } from '../../utils/listingPhotos';
+import { compressImageClientSide } from '../../utils/imageCompress';
 
 interface CreateListingModalProps {
   categories: Category[];
@@ -60,19 +61,21 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
 
   const activeCategory = categories.find((c) => c.id === categoryId);
 
-  // Client-side photo handling
+  // Client-side photo handling: M-04 compresses to max ~1000px JPEG ~0.75 so
+  // demo-mode localStorage never holds raw multi-megabyte uploads.
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files).slice(0, 6 - images.length);
 
     files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setImages((prev) => [...prev, reader.result as string].slice(0, 6));
+      compressImageClientSide(file).then(
+        (compressed) => {
+          setImages((prev) => [...prev, compressed].slice(0, 6));
+        },
+        () => {
+          setValidationError('That photo could not be processed. Try a different image.');
         }
-      };
-      reader.readAsDataURL(file);
+      );
     });
   };
 

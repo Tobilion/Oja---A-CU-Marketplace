@@ -48,12 +48,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     );
   };
 
-  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
+  const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
     setToast({ message, type });
     setTimeout(() => {
       setToast((curr) => (curr?.message === message ? null : curr));
     }, 4000);
-  };
+  }, []);
+
+  // M-04: surface localStorage quota failures visibly (demo-mode image data).
+  useEffect(() => {
+    const onStorageFull = () => {
+      showToast('Local demo storage is full. Photos could not be saved; try fewer or smaller images.', 'error');
+    };
+    window.addEventListener('oja:storage-full', onStorageFull);
+    return () => window.removeEventListener('oja:storage-full', onStorageFull);
+  }, [showToast]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
