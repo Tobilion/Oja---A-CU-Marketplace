@@ -18,6 +18,7 @@ interface BusinessStorefrontModalProps {
   sellerMap: Record<string, UserProfile>;
   onClose: () => void;
   onSelectListing: (listing: Listing) => void;
+  onUpdate?: (business: Business) => void;
 }
 
 export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = ({
@@ -26,11 +27,12 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
   sellerMap,
   onClose,
   onSelectListing,
+  onUpdate,
 }) => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState<'home' | 'products' | 'reviews' | 'about'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'products' | 'reviews' | 'about' | 'manage'>('home');
   const [shopQuery, setShopQuery] = useState('');
   const [isFollowing, setIsFollowing] = useState(
     currentUser ? business.followerIds.includes(currentUser.id) : false
@@ -57,6 +59,70 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
     setFollowerCount((prev) => (nowFollowing ? prev + 1 : prev - 1));
     showToast(nowFollowing ? `Following @${business.handle}` : `Unfollowed @${business.handle}`, 'info');
   };
+
+  // Owner and membership management. Every action refreshes the business so
+  // the panel always reflects the stored state.
+  const isOwner = currentUser?.id === business.ownerId;
+  const isMember = currentUser ? business.memberIds.includes(currentUser.id) : false;
+  const isBlocked = currentUser ? (business.blockedMemberIds || []).includes(currentUser.id) : false;
+  const hasJoinRequest = currentUser ? (business.joinRequests || []).includes(currentUser.id) : false;
+  const [transferUsername, setTransferUsername] = useState('');
+
+  const refreshBusiness = async () => {
+    const fresh = await repo.getBusinessById(business.id);
+    if (fresh) onUpdate?.(fresh);
+  };
+
+  const handleJoinAction = async (action: 'request' | 'approve' | 'decline', userId?: string) => {
+    try {
+      if (action === 'request' && currentUser) {
+        await repo.requestJoinBusiness(business.id, currentUser.id);
+        showToast('Join request sent. The owner will review it.', 'success');
+      } else if (userId) {
+        await repo.approveJoinBusiness(business.id, userId, action === 'approve');
+        showToast(action === 'approve' ? 'Member approved.' : 'Join request declined.', 'info');
+      }
+      await refreshBusiness();
+    } catch (err: any) {
+      showToast(err?.message || 'Membership action failed', 'error');
+    }
+  };
+
+  const handleBlockMember = async (memberId: string, blocked: boolean) => {
+    try {
+      if (blocked && !confirm('Block this member from posting under your brand?')) return;
+      await repo.blockBusinessMember(business.id, memberId, blocked);
+      showToast(blocked ? 'Member blocked from posting.' : 'Member unblocked.', 'info');
+      await refreshBusiness();
+    } catch (err: any) {
+      showToast(err?.message || 'Member update failed', 'error');
+    }
+  };
+
+  const handleTransferRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = transferUsername.trim().replace(/^@/, '').toLowerCase();
+    if (!clean) return;
+    const target = Object.values(sellerMap).find((u) => u.username.toLowerCase() === clean);
+    if (!target) {
+      showToast(`No student found with username @${clean}.`, 'error');
+      return;
+    }
+    if (target.id === business.ownerId) {
+      showToast('That student already owns this business.', 'error');
+      return;
+    }
+    try {
+      await repo.requestBusinessOwnershipTransfer(business.id, target.id);
+      setTransferUsername('');
+      showToast(`Transfer requested. ${target.fullName} must accept and an admin must approve.`, 'success');
+      await refreshBusiness();
+    } catch (err: any) {
+      showToast(err?.message || 'Transfer request failed', 'error');
+    }
+  };
+
+  const displayName = (id: string) => sellerMap[id]?.fullName || `Student ${id.slice(0, 6)}`;
 
   return (
     <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
@@ -127,9 +193,9 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
             />
           </div>
 
-          {/* Tab Bar: Home, Products, Reviews, About */}
+          {/* Tab Bar: Home, Products, Reviews, About (+ Manage for the owner) */}
           <div className="flex gap-6 text-xs font-semibold">
-            {(['home', 'products', 'reviews', 'about'] as const).map((tab) => (
+            {(['home', 'products', 'reviews', 'about', ...(isOwner ? ['manage' as const] : [])] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -210,6 +276,134 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
                     <span>School Registration Status: {business.status.toUpperCase()}</span>
                   </div>
                 </div>
+              </div>
+              {!isOwner && !isMember && !isBlocked && currentUser && (
+                <button
+                  onClick={() => handleJoinAction(hasJoinRequest ? 'decline' : 'request')}
+                  disabled={hasJoinRequest}
+                  className="px-4 py-2 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold hover:opacity-90 disabled:opacity-50"
+                >
+                  {hasJoinRequest ? 'Join Request Pending' : 'Request to Join Team'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* MANAGE (owner only) */}
+          {activeTab === 'manage' && isOwner && (
+            <div className="space-y-5 text-xs max-w-lg">
+              <div className="space-y-2">
+                <h3 className="font-bold text-[var(--color-text-main)]">
+                  Join Requests ({(business.joinRequests || []).length})
+                </h3>
+                {(business.joinRequests || []).length === 0 ? (
+                  <p className="text-[var(--color-text-muted)]">No pending join requests.</p>
+                ) : (
+                  (business.joinRequests || []).map((uid) => (
+                    <div
+                      key={uid}
+                      className="p-2.5 rounded-lg bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between gap-2"
+                    >
+                      <span className="font-semibold text-[var(--color-text-main)]">
+                        {displayName(uid)} <span className="font-mono font-normal text-[var(--color-text-muted)]">@{sellerMap[uid]?.username}</span>
+                      </span>
+                      <span className="flex gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleJoinAction('approve', uid)}
+                          className="px-2.5 py-1 rounded bg-[var(--color-brand-primary)] text-white font-semibold"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleJoinAction('decline', uid)}
+                          className="px-2.5 py-1 rounded border border-[var(--color-border)] text-[var(--color-text-muted)]"
+                        >
+                          Decline
+                        </button>
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="font-bold text-[var(--color-text-main)]">
+                  Team Members ({business.memberIds.length})
+                </h3>
+                {business.memberIds.length === 0 ? (
+                  <p className="text-[var(--color-text-muted)]">No members yet.</p>
+                ) : (
+                  business.memberIds.map((uid) => (
+                    <div
+                      key={uid}
+                      className="p-2.5 rounded-lg bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between gap-2"
+                    >
+                      <span className="font-semibold text-[var(--color-text-main)]">
+                        {displayName(uid)}
+                        {uid === business.ownerId && (
+                          <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-semibold">
+                            Owner
+                          </span>
+                        )}
+                      </span>
+                      {uid !== business.ownerId && (
+                        <button
+                          onClick={() => handleBlockMember(uid, true)}
+                          className="px-2.5 py-1 rounded border border-red-500/30 text-red-600 shrink-0"
+                        >
+                          Block
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+                {(business.blockedMemberIds || []).length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <h4 className="font-semibold text-[var(--color-text-muted)]">Blocked</h4>
+                    {(business.blockedMemberIds || []).map((uid) => (
+                      <div
+                        key={uid}
+                        className="p-2.5 rounded-lg bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between gap-2"
+                      >
+                        <span className="text-[var(--color-text-muted)]">{displayName(uid)}</span>
+                        <button
+                          onClick={() => handleBlockMember(uid, false)}
+                          className="px-2.5 py-1 rounded border border-[var(--color-border)] shrink-0"
+                        >
+                          Unblock
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="font-bold text-[var(--color-text-main)]">Ownership Transfer</h3>
+                {business.transferRequest?.status === 'pending' ? (
+                  <p className="text-[var(--color-text-muted)]">
+                    Transfer to {displayName(business.transferRequest.newOwnerId)} is awaiting admin approval.
+                  </p>
+                ) : (
+                  <form onSubmit={handleTransferRequest} className="flex gap-2">
+                    <input
+                      value={transferUsername}
+                      onChange={(e) => setTransferUsername(e.target.value)}
+                      placeholder="New owner @username"
+                      aria-label="New owner username"
+                      className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-1.5 text-xs text-[var(--color-text-main)]"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold shrink-0"
+                    >
+                      Request Transfer
+                    </button>
+                  </form>
+                )}
+                <p className="text-[11px] text-[var(--color-text-muted)]">
+                  The nominated student is notified, and an admin must approve before ownership changes.
+                </p>
               </div>
             </div>
           )}

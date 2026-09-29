@@ -254,6 +254,9 @@ function AppContent() {
             setSelectedBusinessId(null);
             setSelectedListing(item);
           }}
+          onUpdate={(updated) =>
+            setBusinesses((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+          }
         />
       )}
 

@@ -285,6 +285,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onRefreshData();
   };
 
+  const pendingTransfers = businesses.filter((b) => b.transferRequest?.status === 'pending');
+
+  const handleTransferDecision = async (biz: Business, approved: boolean) => {
+    if (approved && !confirm(`Transfer ownership of ${biz.name} to the nominated student?`)) return;
+    try {
+      await repo.approveBusinessOwnershipTransfer(biz.id, approved);
+      await repo.logAdminAction({
+        adminId: currentUser?.id || 'admin',
+        adminEmail: currentUser?.personalEmail || 'admin@oja.cu',
+        action: approved ? 'BUSINESS_TRANSFER_APPROVED' : 'BUSINESS_TRANSFER_REJECTED',
+        targetType: 'BUSINESS',
+        targetId: biz.id,
+        details: `Ownership transfer for ${biz.name} ${approved ? 'approved' : 'rejected'}`,
+      });
+      showToast(approved ? 'Ownership transferred.' : 'Transfer rejected.', 'info');
+      await loadData();
+      onRefreshData();
+    } catch (err: any) {
+      showToast(err?.message || 'Transfer decision failed', 'error');
+    }
+  };
+
   const handleResolveReport = async (repId: string, action: 'resolved' | 'dismissed') => {
     await repo.resolveReport(repId, action);
     await repo.logAdminAction({
@@ -634,6 +656,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 4. BUSINESSES QUEUE */}
           {activeTab === 'businesses' && (
             <div className="space-y-3">
+              {pendingTransfers.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-bold text-[var(--color-text-main)]">
+                    Ownership Transfers ({pendingTransfers.length})
+                  </h3>
+                  {pendingTransfers.map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div>
+                        <span className="font-bold text-sm text-[var(--color-text-main)]">{b.name}</span>
+                        <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+                          Nominated owner ID: <span className="font-mono">{b.transferRequest?.newOwnerId}</span> ·
+                          Requested {b.transferRequest ? new Date(b.transferRequest.requestedAt).toLocaleDateString() : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleTransferDecision(b, true)}
+                          className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold"
+                        >
+                          Approve Transfer
+                        </button>
+                        <button
+                          onClick={() => handleTransferDecision(b, false)}
+                          className="px-3.5 py-1.5 rounded-lg border border-red-500/30 text-red-600"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <ListControls
                 query={businessQuery.query}
                 onQueryChange={businessQuery.setQuery}
