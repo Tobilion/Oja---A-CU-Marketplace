@@ -5,6 +5,7 @@ coverage/
 .DS_Store
 Thumbs.db
 *.log
+oja-dev.log
 .env*
 !.env.example
 .handoff/
