@@ -213,17 +213,15 @@ export class MockRepository implements Repository {
   }
 
   async verifyEmailCode(userId: string, code: string): Promise<boolean> {
-    // In mock mode, any 6-digit code or "123456" succeeds
+    // In mock mode, any 6-digit code or "123456" succeeds. Verification never
+    // grants admin rights: demo signups always stay non-admin (the founding
+    // Super admins already exist as seeded personas; real bootstrap happens
+    // server-side in Supabase mode after email verification).
     if (code.length === 6) {
       const users = MockStorage.getUsers();
       const user = users.find((u) => u.id === userId);
       if (user) {
         user.isPersonalEmailVerified = true;
-        // Check founding admin bootstrap
-        if (['tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng'].includes(user.personalEmail.toLowerCase())) {
-          user.adminLevel = 'super_admin';
-          if (!user.badges.includes('Admin')) user.badges.push('Admin');
-        }
         MockStorage.setUsers(users);
       }
       return true;
@@ -260,10 +258,8 @@ export class MockRepository implements Repository {
         ratingCount: 0,
         createdAt: new Date().toISOString(),
       };
-      if (['tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng'].includes(normalized)) {
-        newUser.adminLevel = 'super_admin';
-        newUser.badges.push('Admin');
-      }
+      // No founding-admin bootstrap here: a typed school email proves nothing
+      // in demo mode, so school sign-ins always stay non-admin.
       users.push(newUser);
       MockStorage.setUsers(users);
       existing = newUser;
@@ -321,12 +317,10 @@ export class MockRepository implements Repository {
       createdAt: new Date().toISOString(),
     };
 
-    // Auto bootstrap founding super admin
-    if (['tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng'].includes(newUser.personalEmail) || ['tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng'].includes(newUser.schoolEmail)) {
-      newUser.adminLevel = 'super_admin';
-      newUser.badges.push('Admin');
-    }
-
+    // No founding-admin bootstrap here either: anyone can type any email in
+    // demo mode, so signups always stay non-admin (Member; seller/agent via
+    // application or promotion). The seeded founding Super admins cover the
+    // admin demo path through the persona switcher.
     users.push(newUser);
     MockStorage.setUsers(users);
     MockStorage.setCurrentUserId(newUser.id);
