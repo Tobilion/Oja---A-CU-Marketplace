@@ -562,6 +562,27 @@ BEGIN
         WHERE l.seller_id = v_seller_id;
     END LOOP;
 
+    -- 4. Hall discount (parity with calculateOrderDeliveryFee): when two or
+    -- more sellers in this order share the same hall, each qualifying
+    -- sub-order fee is halved. Base fees are 500/1000 so halving stays integral.
+    UPDATE public.sub_orders so
+    SET delivery_fee = ROUND(so.delivery_fee * 0.5)
+    WHERE so.order_id = v_order_id
+      AND EXISTS (SELECT 1 FROM public.profiles p1 WHERE p1.id = so.seller_id AND p1.hall_id IS NOT NULL)
+      AND (
+        SELECT COUNT(*)
+        FROM public.sub_orders so2
+        JOIN public.profiles p1 ON p1.id = so.seller_id
+        JOIN public.profiles p2 ON p2.id = so2.seller_id
+        WHERE so2.order_id = v_order_id
+          AND p2.hall_id IS NOT DISTINCT FROM p1.hall_id
+      ) >= 2;
+
+    -- 5. Recompute order totals from the final (possibly discounted) sub-orders
+    SELECT COALESCE(SUM(subtotal), 0), COALESCE(SUM(delivery_fee), 0)
+    INTO v_items_subtotal, v_delivery_fee_total
+    FROM public.sub_orders WHERE order_id = v_order_id;
+
     -- Update order totals
     UPDATE public.orders
     SET items_subtotal = v_items_subtotal,
@@ -582,7 +603,6 @@ DECLARE
     v_subtotal BIGINT;
     v_days_late NUMERIC;
     v_penalty BIGINT := 0;
-    v_max_penalty BIGINT;
 BEGIN
     SELECT subtotal INTO v_subtotal FROM public.sub_orders WHERE id = p_sub_order_id;
     IF NOT FOUND THEN
@@ -594,15 +614,12 @@ BEGIN
     END IF;
 
     v_days_late := CEIL(p_hours_late / 24.0);
-    -- 5% per day late, minimum ₦200, maximum 50% of subtotal
-    v_penalty := ROUND(v_subtotal * 0.05 * v_days_late);
-    IF v_penalty < 200 THEN
-        v_penalty := 200;
-    END IF;
-    v_max_penalty := ROUND(v_subtotal * 0.50);
-    IF v_penalty > v_max_penalty THEN
-        v_penalty := v_max_penalty;
-    END IF;
+    -- Parity with calculateLatePenalty (deliveryFee.ts): per-day penalty is
+    -- 5% of subtotal with a N200 daily floor, capped at 50% of subtotal.
+    v_penalty := LEAST(
+        v_days_late * GREATEST(200, ROUND(v_subtotal * 0.05)),
+        ROUND(v_subtotal * 0.50)
+    )::BIGINT;
 
     UPDATE public.sub_orders
     SET penalty_amount = v_penalty,

@@ -121,6 +121,26 @@ export function runDeliveryFeeTests(): { passed: number; total: number; logs: st
     assert(twoDaysLate.isAlertLevel, '2 days late MUST trigger admin alert level');
   });
 
+  // 10. Late-penalty parity with apply_late_penalty SQL (daily floor, 50% cap)
+  test('Late penalty parity: daily N200 floor binds on small subtotals', () => {
+    // subtotal 2000, 48h late = 2 days: daily 5% = 100 -> floor 200; 2*200 = 400; cap 1000
+    const small = calculateLatePenalty(2000, 48);
+    assert(small.penaltyAmount === 400, `Expected 400, got ${small.penaltyAmount}`);
+    assert(small.daysLate === 2, `Expected 2 days late, got ${small.daysLate}`);
+  });
+
+  test('Late penalty parity: 50% cap binds on long delays', () => {
+    // subtotal 1000, 72h late = 3 days: 3*200 = 600, cap 500
+    const capped = calculateLatePenalty(1000, 72);
+    assert(capped.penaltyAmount === 500, `Expected 500, got ${capped.penaltyAmount}`);
+  });
+
+  test('Late penalty parity: exact values the SQL expression must reproduce', () => {
+    // subtotal 30000, 24h late = 1 day: 1*1500 = 1500, cap 15000
+    const large = calculateLatePenalty(30000, 24);
+    assert(large.penaltyAmount === 1500, `Expected 1500, got ${large.penaltyAmount}`);
+  });
+
   return { passed, total, logs };
 }
 
