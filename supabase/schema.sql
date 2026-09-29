@@ -325,24 +325,86 @@ CREATE POLICY profiles_owner_or_admin_read ON public.profiles FOR SELECT USING (
 -- B-04: Prevent self-escalation on profiles
 CREATE POLICY profiles_self_update ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
+-- H-03: admins update other users' rows through adminUpdateUser. Permissive
+-- policies OR together, so this adds admin writes without widening self-update.
+DROP POLICY IF EXISTS profiles_admin_update ON public.profiles;
+CREATE POLICY profiles_admin_update ON public.profiles FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+);
+
 CREATE OR REPLACE FUNCTION public.protect_profile_privileged_columns()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_caller_level admin_level;
+    v_other_super_admins INTEGER;
 BEGIN
-    IF (auth.uid() IS NOT NULL AND auth.uid() = NEW.id) THEN
+    -- Service role (sweeps, auth hook) bypasses; every signed-in caller is checked.
+    IF auth.uid() IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT admin_level INTO v_caller_level FROM public.profiles WHERE id = auth.uid();
+
+    -- Sanctioned elevation path: bootstrap_admin grants the founding Super
+    -- admin role to the row owner on first verification. Without this
+    -- carve-out the role check below would block the bootstrap itself.
+    IF OLD.admin_level IS NULL AND NEW.admin_level = 'super_admin'
+       AND auth.uid() = NEW.id
+       AND (LOWER(COALESCE(NEW.personal_email, '')) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng')
+            OR LOWER(COALESCE(NEW.school_email, '')) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng')) THEN
+        RETURN NEW;
+    END IF;
+
+    -- H-03: nobody demotes the last Super admin, not even another Super admin.
+    IF OLD.admin_level = 'super_admin' AND NEW.admin_level IS DISTINCT FROM 'super_admin' THEN
+        SELECT COUNT(*) INTO v_other_super_admins FROM public.profiles
+        WHERE admin_level = 'super_admin' AND id != OLD.id;
+        IF v_other_super_admins = 0 THEN
+            RAISE EXCEPTION 'You cannot demote the last Super admin.';
+        END IF;
+        -- Founding admins are protected from demotion.
+        IF LOWER(COALESCE(OLD.personal_email, '')) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng')
+           OR LOWER(COALESCE(OLD.school_email, '')) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng') THEN
+            RAISE EXCEPTION 'Founding admins are protected from demotion.';
+        END IF;
+    END IF;
+
+    -- H-03: founding admins are protected from suspension.
+    IF NEW.is_suspended IS DISTINCT FROM OLD.is_suspended AND NEW.is_suspended IS TRUE THEN
+        IF LOWER(COALESCE(OLD.personal_email, '')) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng')
+           OR LOWER(COALESCE(OLD.school_email, '')) IN ('tobilobajagun@gmail.com', 'ejagun.2401221@stu.cu.edu.ng') THEN
+            RAISE EXCEPTION 'Founding admins are protected from suspension.';
+        END IF;
+    END IF;
+
+    IF (NEW.admin_level IS DISTINCT FROM OLD.admin_level OR
+        NEW.badges IS DISTINCT FROM OLD.badges OR
+        NEW.is_seller_approved IS DISTINCT FROM OLD.is_seller_approved OR
+        NEW.seller_application_status IS DISTINCT FROM OLD.seller_application_status OR
+        NEW.is_suspended IS DISTINCT FROM OLD.is_suspended OR
+        NEW.rating_average IS DISTINCT FROM OLD.rating_average OR
+        NEW.rating_count IS DISTINCT FROM OLD.rating_count) THEN
+
+        -- Role and badge changes: Super admin only.
         IF (NEW.admin_level IS DISTINCT FROM OLD.admin_level OR
-            NEW.badges IS DISTINCT FROM OLD.badges OR
+            NEW.badges IS DISTINCT FROM OLD.badges) AND
+           (v_caller_level IS NULL OR v_caller_level != 'super_admin') THEN
+            RAISE EXCEPTION 'Unauthorized: only Super admins can change roles or badges.';
+        END IF;
+
+        -- Suspension and seller approval: Super admin or Moderator.
+        IF (NEW.is_suspended IS DISTINCT FROM OLD.is_suspended OR
             NEW.is_seller_approved IS DISTINCT FROM OLD.is_seller_approved OR
-            NEW.seller_application_status IS DISTINCT FROM OLD.seller_application_status OR
-            NEW.is_suspended IS DISTINCT FROM OLD.is_suspended OR
-            NEW.rating_average IS DISTINCT FROM OLD.rating_average OR
-            NEW.rating_count IS DISTINCT FROM OLD.rating_count) THEN
-            
-            IF NOT EXISTS (
-                SELECT 1 FROM public.profiles
-                WHERE id = auth.uid() AND admin_level = 'super_admin'
-            ) THEN
-                RAISE EXCEPTION 'Unauthorized: Users cannot modify administrative levels, badges, or seller verification.';
-            END IF;
+            NEW.seller_application_status IS DISTINCT FROM OLD.seller_application_status) AND
+           (v_caller_level IS NULL OR v_caller_level NOT IN ('super_admin', 'moderator')) THEN
+            RAISE EXCEPTION 'Unauthorized: only Super admins or Moderators can suspend users or approve sellers.';
+        END IF;
+
+        -- Rating aggregates are maintained by review flows, never by hand.
+        IF (NEW.rating_average IS DISTINCT FROM OLD.rating_average OR
+            NEW.rating_count IS DISTINCT FROM OLD.rating_count) AND
+           (v_caller_level IS NULL OR v_caller_level != 'super_admin') THEN
+            RAISE EXCEPTION 'Unauthorized: ratings are maintained by completed-order reviews.';
         END IF;
     END IF;
     RETURN NEW;

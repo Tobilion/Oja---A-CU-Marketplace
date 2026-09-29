@@ -7,6 +7,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   Repository,
   PlaceOrderInput,
+  AdminUserUpdates,
 } from './repo';
 import {
   UserProfile,
@@ -85,6 +86,67 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from('profiles').update(payload).eq('id', id).select().single();
     if (error) throw error;
     return this.mapProfile(data);
+  }
+
+  async adminUpdateUser(actorId: string, targetId: string, updates: AdminUserUpdates): Promise<UserProfile> {
+    // H-03: same guards as the mock repo (defense in depth). The trigger and
+    // profiles_admin_update RLS policy enforce them server-side regardless.
+    const { FOUNDING_SUPER_ADMIN_EMAILS } = await import('../config/appConfig');
+    const actor = await this.getUserById(actorId);
+    if (!actor?.adminLevel) throw new Error('Admin privileges required.');
+    const target = await this.getUserById(targetId);
+    if (!target) throw new Error('User not found');
+    if (actorId === targetId) {
+      throw new Error('You cannot change your own role, badges, or suspension status.');
+    }
+    const wantsRoleChange = updates.adminLevel !== undefined || updates.badges !== undefined;
+    const wantsModeration = updates.isSuspended !== undefined || updates.isSellerApproved !== undefined;
+    const isSuper = actor.adminLevel === 'super_admin';
+    const isMod = actor.adminLevel === 'moderator';
+    if (wantsRoleChange && !isSuper) throw new Error('Only a Super admin can change badges or admin levels.');
+    if (wantsModeration && !(isSuper || isMod)) {
+      throw new Error('Only a Super admin or Moderator can suspend users or approve sellers.');
+    }
+    const targetEmails = [target.personalEmail, target.schoolEmail].map((e) => (e || '').toLowerCase());
+    const isFounding = FOUNDING_SUPER_ADMIN_EMAILS.some((f) => targetEmails.includes(f.toLowerCase()));
+    const demoting = target.adminLevel === 'super_admin' && updates.adminLevel !== undefined && updates.adminLevel !== 'super_admin';
+    if (isFounding && (demoting || updates.isSuspended === true)) {
+      throw new Error('Founding admins are protected from demotion and suspension.');
+    }
+
+    const before = {
+      badges: [...target.badges],
+      adminLevel: target.adminLevel ?? null,
+      isSuspended: target.isSuspended,
+      isSellerApproved: target.isSellerApproved,
+    };
+    let badges = updates.badges !== undefined ? [...updates.badges] : [...target.badges];
+    if (badges.includes('Verified Seller') && !badges.includes('Seller')) badges.push('Seller');
+
+    const payload: any = { badges };
+    if (updates.adminLevel !== undefined) payload.admin_level = updates.adminLevel;
+    if (updates.isSuspended !== undefined) payload.is_suspended = updates.isSuspended;
+    if (updates.isSellerApproved !== undefined) payload.is_seller_approved = updates.isSellerApproved;
+    const { data, error } = await this.client.from('profiles').update(payload).eq('id', targetId).select().single();
+    if (error) throw error;
+    const updated = this.mapProfile(data);
+    await this.logAdminAction({
+      adminId: actor.id,
+      adminEmail: actor.personalEmail || actor.schoolEmail,
+      action: 'ADMIN_USER_UPDATE',
+      targetType: 'USER',
+      targetId: target.id,
+      details: JSON.stringify({
+        before,
+        after: {
+          badges: [...updated.badges],
+          adminLevel: updated.adminLevel ?? null,
+          isSuspended: updated.isSuspended,
+          isSellerApproved: updated.isSellerApproved,
+        },
+      }),
+    });
+    return updated;
   }
 
   async applyForSeller(userId: string, bankDetails: BankDetails): Promise<void> {

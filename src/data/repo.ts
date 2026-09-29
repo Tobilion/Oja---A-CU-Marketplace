@@ -5,6 +5,8 @@
 
 import {
   UserProfile,
+  UserBadge,
+  AdminLevel,
   Listing,
   Business,
   Order,
@@ -33,6 +35,13 @@ export interface PlaceOrderInput {
   items: { listingId: string; quantity: number }[];
 }
 
+export interface AdminUserUpdates {
+  badges?: UserBadge[];
+  adminLevel?: AdminLevel | null;
+  isSuspended?: boolean;
+  isSellerApproved?: boolean;
+}
+
 export interface Repository {
   readonly isMock: boolean;
 
@@ -42,6 +51,13 @@ export interface Repository {
   getUsers(): Promise<UserProfile[]>;
   getUserById(id: string): Promise<UserProfile | null>;
   updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile>;
+  /**
+   * H-03: privileged user administration. Enforced in the mock repo, in the
+   * Supabase repo (pre-checks), and server-side by trigger + RLS. Guards:
+   * self-actions rejected, last Super admin kept, founding admins protected,
+   * Verified Seller implies Seller. Every call writes an audit entry.
+   */
+  adminUpdateUser(actorId: string, targetId: string, updates: AdminUserUpdates): Promise<UserProfile>;
   applyForSeller(userId: string, bankDetails: BankDetails): Promise<void>;
   verifyEmailCode(userId: string, code: string): Promise<boolean>;
   signInWithGoogleSchool(schoolEmail: string, fullName: string): Promise<UserProfile>;

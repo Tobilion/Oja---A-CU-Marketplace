@@ -6,6 +6,7 @@
 import {
   Repository,
   PlaceOrderInput,
+  AdminUserUpdates,
 } from './repo';
 import {
   UserProfile,
@@ -28,6 +29,7 @@ import {
 import { MockStorage, pickCurrentUser } from './mockStorage';
 import { calculateOrderDeliveryFee, calculateLatePenalty } from '../utils/deliveryFee';
 import { VALID_ORDER_TRANSITIONS, validateOrderTransition, deriveOrderActorRole } from '../utils/transitions';
+import { FOUNDING_SUPER_ADMIN_EMAILS } from '../config/appConfig';
 
 export class MockRepository implements Repository {
   readonly isMock = true;
@@ -85,6 +87,87 @@ export class MockRepository implements Repository {
     const updated = { ...users[idx], ...safeUpdates };
     users[idx] = updated;
     MockStorage.setUsers(users);
+    return updated;
+  }
+
+  async adminUpdateUser(actorId: string, targetId: string, updates: AdminUserUpdates): Promise<UserProfile> {
+    // H-03: privileged administration with self-action guards, last-Super
+    // admin protection, founding-admin protection, badge dependency, and a
+    // before/after audit entry. Mirrored server-side by trigger + RLS.
+    const users = MockStorage.getUsers();
+    const actor = users.find((u) => u.id === actorId);
+    if (!actor?.adminLevel) throw new Error('Admin privileges required.');
+    const idx = users.findIndex((u) => u.id === targetId);
+    if (idx === -1) throw new Error('User not found');
+    if (actorId === targetId) {
+      throw new Error('You cannot change your own role, badges, or suspension status.');
+    }
+    const target = users[idx];
+
+    const wantsRoleChange = updates.adminLevel !== undefined || updates.badges !== undefined;
+    const wantsModeration = updates.isSuspended !== undefined || updates.isSellerApproved !== undefined;
+    const isSuper = actor.adminLevel === 'super_admin';
+    const isMod = actor.adminLevel === 'moderator';
+    if (wantsRoleChange && !isSuper) {
+      throw new Error('Only a Super admin can change badges or admin levels.');
+    }
+    if (wantsModeration && !(isSuper || isMod)) {
+      throw new Error('Only a Super admin or Moderator can suspend users or approve sellers.');
+    }
+
+    const targetEmails = [target.personalEmail, target.schoolEmail].map((e) => (e || '').toLowerCase());
+    const isFounding = FOUNDING_SUPER_ADMIN_EMAILS.some((f) => targetEmails.includes(f.toLowerCase()));
+    const demoting = target.adminLevel === 'super_admin' && updates.adminLevel !== undefined && updates.adminLevel !== 'super_admin';
+    const suspending = updates.isSuspended === true;
+    if (isFounding && (demoting || suspending)) {
+      throw new Error('Founding admins are protected from demotion and suspension.');
+    }
+    if (demoting && users.every((u) => u.id === target.id || u.adminLevel !== 'super_admin')) {
+      throw new Error('You cannot demote the last Super admin.');
+    }
+
+    const before = {
+      badges: [...target.badges],
+      adminLevel: target.adminLevel ?? null,
+      isSuspended: target.isSuspended,
+      isSellerApproved: target.isSellerApproved,
+    };
+
+    // L-02 badge dependency: Verified Seller implies Seller.
+    let badges = updates.badges !== undefined ? [...updates.badges] : [...target.badges];
+    if (badges.includes('Verified Seller') && !badges.includes('Seller')) {
+      badges.push('Seller');
+    }
+
+    const updated: UserProfile = {
+      ...target,
+      badges,
+      adminLevel: updates.adminLevel !== undefined ? updates.adminLevel : target.adminLevel,
+      isSuspended: updates.isSuspended !== undefined ? updates.isSuspended : target.isSuspended,
+      isSellerApproved:
+        updates.isSellerApproved !== undefined ? updates.isSellerApproved : target.isSellerApproved,
+    };
+    if (badges.includes('Seller') || badges.includes('Verified Seller')) {
+      updated.isSellerApproved = true;
+      if (updated.sellerApplicationStatus === 'pending') updated.sellerApplicationStatus = 'approved';
+    }
+    users[idx] = updated;
+    MockStorage.setUsers(users);
+
+    const after = {
+      badges: [...updated.badges],
+      adminLevel: updated.adminLevel ?? null,
+      isSuspended: updated.isSuspended,
+      isSellerApproved: updated.isSellerApproved,
+    };
+    await this.logAdminAction({
+      adminId: actor.id,
+      adminEmail: actor.personalEmail || actor.schoolEmail,
+      action: 'ADMIN_USER_UPDATE',
+      targetType: 'USER',
+      targetId: target.id,
+      details: JSON.stringify({ before, after }),
+    });
     return updated;
   }
 
