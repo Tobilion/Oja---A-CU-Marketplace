@@ -9,6 +9,24 @@ import { canVerifyPayments, canManageLogistics, canModerate, isSuperAdmin } from
 export type OrderActorRole = 'buyer' | 'seller' | 'agent' | 'admin';
 
 /**
+ * Derives the actor's role on a specific sub-order from ids both backends have.
+ * Returns null when the actor is a stranger to the order (no role at all).
+ */
+export function deriveOrderActorRole(args: {
+  buyerId: string;
+  sellerId: string;
+  agentId?: string | null;
+  actorId: string;
+  adminLevel?: AdminLevel | null;
+}): OrderActorRole | null {
+  if (args.actorId === args.buyerId) return 'buyer';
+  if (args.actorId === args.sellerId) return 'seller';
+  if (args.agentId && args.actorId === args.agentId) return 'agent';
+  if (args.adminLevel) return 'admin';
+  return null;
+}
+
+/**
  * Authoritative Order Lifecycle Transition Matrix.
  * Enforces allowed legal transitions for Oja orders.
  */

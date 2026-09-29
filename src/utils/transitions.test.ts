@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { validateOrderTransition, VALID_ORDER_TRANSITIONS } from './transitions';
+import { validateOrderTransition, VALID_ORDER_TRANSITIONS, deriveOrderActorRole } from './transitions';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -97,3 +97,13 @@ const e9 = validateOrderTransition('payment_confirmed', 'refunded', 'admin', 'lo
 assert(!e9.allowed, 'Logistics admin CANNOT issue refunds');
 
 console.log('ALL 23 STATE MACHINE TESTS PASSED SUCCESSFULLY.');
+
+// 6. ACTOR ROLE DERIVATION (shared by mock repo and RPC callers)
+assert(deriveOrderActorRole({ buyerId: 'b', sellerId: 's', agentId: 'a', actorId: 'b', adminLevel: null }) === 'buyer', 'Buyer derives buyer');
+assert(deriveOrderActorRole({ buyerId: 'b', sellerId: 's', agentId: 'a', actorId: 's', adminLevel: null }) === 'seller', 'Seller derives seller');
+assert(deriveOrderActorRole({ buyerId: 'b', sellerId: 's', agentId: 'a', actorId: 'a', adminLevel: null }) === 'agent', 'Agent derives agent');
+assert(deriveOrderActorRole({ buyerId: 'b', sellerId: 's', actorId: 'x', adminLevel: 'moderator' }) === 'admin', 'Admin level derives admin');
+assert(deriveOrderActorRole({ buyerId: 'b', sellerId: 's', actorId: 'x', adminLevel: null }) === null, 'Stranger derives null');
+assert(deriveOrderActorRole({ buyerId: 'b', sellerId: 's', agentId: null, actorId: 'a', adminLevel: null }) === null, 'Unassigned agent id derives null');
+
+console.log('ALL 29 STATE MACHINE TESTS PASSED SUCCESSFULLY.');
