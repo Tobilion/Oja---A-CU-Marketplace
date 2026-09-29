@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { repo } from '../../data';
-import { Order, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge } from '../../types';
+import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge } from '../../types';
 import { AdminUserUpdates } from '../../data';
 import { useListQuery } from '../../hooks/useListQuery';
 import { ListControls } from '../common/ListControls';
@@ -120,7 +120,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await handleAdminUserUpdate(u.id, { adminLevel, badges });
   };
 
-  // Work Queues computation
+  // Work Queues computation (declared before the H-02 queries that read them)
   const pendingPayments = orders.filter((o) => o.paymentStatus === 'pending_verification');
   const pendingSellers = allUsers.filter((u) => u.sellerApplicationStatus === 'pending');
   const pendingBusinesses = businesses.filter((b) => b.status === 'pending');
@@ -140,6 +140,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .map((s) => ({ order: o, sub: s }))
   );
 
+  // H-02: every queue below shares the same search, sort, and pagination.
+  const byOldest = (a: { createdAt: string }, b: { createdAt: string }) =>
+    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  const byNewest = (a: { createdAt: string }, b: { createdAt: string }) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  const byName = (a: { fullName: string }, b: { fullName: string }) => a.fullName.localeCompare(b.fullName);
+
+  const paymentQuery = useListQuery<Order>({
+    items: pendingPayments,
+    searchText: (o) => `${o.orderNumber} ${o.senderAccountName || ''} ${o.paymentReference || ''} ${o.totalAmount}`,
+    sortOptions: [
+      { id: 'oldest', label: 'Oldest first', compare: byOldest },
+      { id: 'newest', label: 'Newest first', compare: byNewest },
+      { id: 'highest', label: 'Highest amount', compare: (a, b) => b.totalAmount - a.totalAmount },
+    ],
+    pageSize: 8,
+  });
+
+  const sellerQuery = useListQuery<UserProfile>({
+    items: pendingSellers,
+    searchText: (u) => `${u.fullName} ${u.username} ${u.schoolEmail} ${u.bankDetails?.bankName || ''} ${u.bankDetails?.accountNumber || ''}`,
+    sortOptions: [
+      { id: 'oldest', label: 'Oldest application', compare: (a, b) => byOldest({ createdAt: a.sellerApplicationDate || a.createdAt }, { createdAt: b.sellerApplicationDate || b.createdAt }) },
+      { id: 'name', label: 'Name A-Z', compare: byName },
+    ],
+    pageSize: 8,
+  });
+
+  const businessQuery = useListQuery<Business>({
+    items: pendingBusinesses,
+    searchText: (b) => `${b.name} ${b.handle} ${b.description}`,
+    sortOptions: [
+      { id: 'oldest', label: 'Oldest first', compare: byOldest },
+      { id: 'name', label: 'Name A-Z', compare: (a, b) => a.name.localeCompare(b.name) },
+    ],
+    pageSize: 8,
+  });
+
+  const reportQuery = useListQuery<Report>({
+    items: pendingReports,
+    searchText: (r) => `${r.reason} ${r.targetType} ${r.targetTitle || ''} ${r.details || ''}`,
+    sortOptions: [
+      { id: 'oldest', label: 'Oldest first', compare: byOldest },
+      { id: 'newest', label: 'Newest first', compare: byNewest },
+    ],
+    pageSize: 8,
+  });
+
+  const lateQuery = useListQuery<{ order: Order; sub: SubOrder }>({
+    items: lateSubOrders,
+    searchText: ({ order }) => order.orderNumber,
+    sortOptions: [
+      { id: 'penalty', label: 'Highest penalty', compare: (a, b) => b.sub.penaltyAmount - a.sub.penaltyAmount },
+      { id: 'oldest', label: 'Oldest order', compare: (a, b) => byOldest(a.order, b.order) },
+    ],
+    pageSize: 8,
+  });
+
+  const payoutQuery = useListQuery<{ order: Order; sub: SubOrder }>({
+    items: payoutsDue,
+    searchText: ({ order, sub }) => `${order.orderNumber} ${sub.sellerId} ${sub.sellerPayoutAmount}`,
+    sortOptions: [
+      { id: 'highest', label: 'Highest payout', compare: (a, b) => b.sub.sellerPayoutAmount - a.sub.sellerPayoutAmount },
+      { id: 'oldest', label: 'Oldest order', compare: (a, b) => byOldest(a.order, b.order) },
+    ],
+    pageSize: 8,
+  });
+
+  const hallQuery = useListQuery<Hall>({
+    items: halls,
+    searchText: (h) => `${h.name} ${h.gender}`,
+    sortOptions: [{ id: 'name', label: 'Name A-Z', compare: (a, b) => a.name.localeCompare(b.name) }],
+    pageSize: 12,
+  });
+
+  const auditQuery = useListQuery<AuditLogEntry>({
+    items: auditLogs,
+    searchText: (l) => `${l.action} ${l.adminEmail} ${l.targetType} ${l.targetId} ${l.details || ''}`,
+    sortOptions: [
+      { id: 'newest', label: 'Newest first', compare: (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime() },
+      { id: 'oldest', label: 'Oldest first', compare: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() },
+    ],
+    pageSize: 10,
+  });
+
   const handleVerifyPayment = async (orderId: string, approved: boolean) => {
     await repo.verifyPayment(orderId, approved);
     await repo.logAdminAction({
@@ -156,11 +241,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleApproveSeller = async (targetUser: UserProfile, approve: boolean) => {
-    await repo.updateUserProfile(targetUser.id, {
-      isSellerApproved: approve,
-      sellerApplicationStatus: approve ? 'approved' : 'rejected',
-      badges: approve && !targetUser.badges.includes('Seller') ? [...targetUser.badges, 'Seller'] : targetUser.badges,
-    });
+    // B-04 allowlist strips privileged fields from updateUserProfile, so
+    // seller approval must flow through the privileged admin path.
+    if (!currentUser) return;
+    try {
+      await repo.adminUpdateUser(currentUser.id, targetUser.id, {
+        isSellerApproved: approve,
+        sellerApplicationStatus: approve ? 'approved' : 'rejected',
+        badges: approve && !targetUser.badges.includes('Seller') ? [...targetUser.badges, 'Seller'] : targetUser.badges,
+      });
+    } catch (err: any) {
+      showToast(err?.message || 'Seller approval failed', 'error');
+      return;
+    }
     await repo.logAdminAction({
       adminId: currentUser?.id || 'admin',
       adminEmail: currentUser?.personalEmail || 'admin@oja.cu',
@@ -424,10 +517,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 2. PAYMENTS QUEUE */}
           {activeTab === 'payments' && (
             <div className="space-y-3">
-              {pendingPayments.length === 0 ? (
-                <p className="text-center py-12 text-[var(--color-text-muted)]">No pending payments to verify.</p>
+              <ListControls
+                query={paymentQuery.query}
+                onQueryChange={paymentQuery.setQuery}
+                searchPlaceholder="Search order number, sender, reference..."
+                sortId={paymentQuery.sortId}
+                onSortChange={paymentQuery.setSortId}
+                sortOptions={paymentQuery.sortOptions}
+                page={paymentQuery.page}
+                totalPages={paymentQuery.totalPages}
+                onPageChange={paymentQuery.setPage}
+                total={paymentQuery.total}
+                itemLabel="payments"
+              />
+              {paymentQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {paymentQuery.query ? 'No payments match this search.' : 'No pending payments to verify.'}
+                </p>
               ) : (
-                pendingPayments.map((ord) => (
+                paymentQuery.pageItems.map((ord) => (
                   <div
                     key={ord.id}
                     className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -467,10 +575,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 3. SELLERS QUEUE */}
           {activeTab === 'sellers' && (
             <div className="space-y-3">
-              {pendingSellers.length === 0 ? (
-                <p className="text-center py-12 text-[var(--color-text-muted)]">No pending seller applications.</p>
+              <ListControls
+                query={sellerQuery.query}
+                onQueryChange={sellerQuery.setQuery}
+                searchPlaceholder="Search name, email, bank..."
+                sortId={sellerQuery.sortId}
+                onSortChange={sellerQuery.setSortId}
+                sortOptions={sellerQuery.sortOptions}
+                page={sellerQuery.page}
+                totalPages={sellerQuery.totalPages}
+                onPageChange={sellerQuery.setPage}
+                total={sellerQuery.total}
+                itemLabel="applications"
+              />
+              {sellerQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {sellerQuery.query ? 'No applications match this search.' : 'No pending seller applications.'}
+                </p>
               ) : (
-                pendingSellers.map((u) => (
+                sellerQuery.pageItems.map((u) => (
                   <div
                     key={u.id}
                     className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -509,10 +632,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 4. BUSINESSES QUEUE */}
           {activeTab === 'businesses' && (
             <div className="space-y-3">
-              {pendingBusinesses.length === 0 ? (
-                <p className="text-center py-12 text-[var(--color-text-muted)]">No pending business approvals.</p>
+              <ListControls
+                query={businessQuery.query}
+                onQueryChange={businessQuery.setQuery}
+                searchPlaceholder="Search business name, handle..."
+                sortId={businessQuery.sortId}
+                onSortChange={businessQuery.setSortId}
+                sortOptions={businessQuery.sortOptions}
+                page={businessQuery.page}
+                totalPages={businessQuery.totalPages}
+                onPageChange={businessQuery.setPage}
+                total={businessQuery.total}
+                itemLabel="businesses"
+              />
+              {businessQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {businessQuery.query ? 'No businesses match this search.' : 'No pending business approvals.'}
+                </p>
               ) : (
-                pendingBusinesses.map((b) => (
+                businessQuery.pageItems.map((b) => (
                   <div
                     key={b.id}
                     className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -548,10 +686,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 5. REPORTS QUEUE */}
           {activeTab === 'reports' && (
             <div className="space-y-3">
-              {pendingReports.length === 0 ? (
-                <p className="text-center py-12 text-[var(--color-text-muted)]">No pending reports.</p>
+              <ListControls
+                query={reportQuery.query}
+                onQueryChange={reportQuery.setQuery}
+                searchPlaceholder="Search reason, target..."
+                sortId={reportQuery.sortId}
+                onSortChange={reportQuery.setSortId}
+                sortOptions={reportQuery.sortOptions}
+                page={reportQuery.page}
+                totalPages={reportQuery.totalPages}
+                onPageChange={reportQuery.setPage}
+                total={reportQuery.total}
+                itemLabel="reports"
+              />
+              {reportQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {reportQuery.query ? 'No reports match this search.' : 'No pending reports.'}
+                </p>
               ) : (
-                pendingReports.map((r) => (
+                reportQuery.pageItems.map((r) => (
                   <div
                     key={r.id}
                     className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] space-y-2"
@@ -592,10 +745,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 6. LATE ORDERS */}
           {activeTab === 'late' && (
             <div className="space-y-3">
-              {lateSubOrders.length === 0 ? (
-                <p className="text-center py-12 text-[var(--color-text-muted)]">No late orders currently.</p>
+              <ListControls
+                query={lateQuery.query}
+                onQueryChange={lateQuery.setQuery}
+                searchPlaceholder="Search order number..."
+                sortId={lateQuery.sortId}
+                onSortChange={lateQuery.setSortId}
+                sortOptions={lateQuery.sortOptions}
+                page={lateQuery.page}
+                totalPages={lateQuery.totalPages}
+                onPageChange={lateQuery.setPage}
+                total={lateQuery.total}
+                itemLabel="late orders"
+              />
+              {lateQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {lateQuery.query ? 'No late orders match this search.' : 'No late orders currently.'}
+                </p>
               ) : (
-                lateSubOrders.map(({ order, sub }) => (
+                lateQuery.pageItems.map(({ order, sub }) => (
                   <div
                     key={sub.id}
                     className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-950 dark:text-amber-200 space-y-2"
@@ -616,10 +784,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 7. PAYOUTS QUEUE */}
           {activeTab === 'payouts' && (
             <div className="space-y-3">
-              {payoutsDue.length === 0 ? (
-                <p className="text-center py-12 text-[var(--color-text-muted)]">All seller payouts are up to date.</p>
+              <ListControls
+                query={payoutQuery.query}
+                onQueryChange={payoutQuery.setQuery}
+                searchPlaceholder="Search order number, seller..."
+                sortId={payoutQuery.sortId}
+                onSortChange={payoutQuery.setSortId}
+                sortOptions={payoutQuery.sortOptions}
+                page={payoutQuery.page}
+                totalPages={payoutQuery.totalPages}
+                onPageChange={payoutQuery.setPage}
+                total={payoutQuery.total}
+                itemLabel="payouts"
+              />
+              {payoutQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {payoutQuery.query ? 'No payouts match this search.' : 'All seller payouts are up to date.'}
+                </p>
               ) : (
-                payoutsDue.map(({ order, sub }) => (
+                payoutQuery.pageItems.map(({ order, sub }) => (
                   <div
                     key={sub.id}
                     className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between"
@@ -752,7 +935,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         })}
                         {u.sellerApplicationStatus === 'pending' && (
                           <button
-                            onClick={() => handleAdminUserUpdate(u.id, { isSellerApproved: true })}
+                            onClick={() => handleAdminUserUpdate(u.id, { isSellerApproved: true, sellerApplicationStatus: 'approved' })}
                             className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 font-semibold"
                           >
                             Approve seller application
@@ -795,8 +978,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </form>
 
+              <ListControls
+                query={hallQuery.query}
+                onQueryChange={hallQuery.setQuery}
+                searchPlaceholder="Search halls..."
+                sortId={hallQuery.sortId}
+                onSortChange={hallQuery.setSortId}
+                sortOptions={hallQuery.sortOptions}
+                page={hallQuery.page}
+                totalPages={hallQuery.totalPages}
+                onPageChange={hallQuery.setPage}
+                total={hallQuery.total}
+                itemLabel="halls"
+              />
+
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {halls.map((h) => (
+                {hallQuery.pageItems.map((h) => (
                   <div key={h.id} className="p-3 rounded-lg bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex justify-between items-center">
                     <div>
                       <p className="font-semibold text-[var(--color-text-main)]">{h.name}</p>
@@ -811,7 +1008,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* 10. AUDIT LOG */}
           {activeTab === 'audit' && (
             <div className="space-y-2">
-              {auditLogs.map((log) => (
+              <ListControls
+                query={auditQuery.query}
+                onQueryChange={auditQuery.setQuery}
+                searchPlaceholder="Search action, admin, target..."
+                sortId={auditQuery.sortId}
+                onSortChange={auditQuery.setSortId}
+                sortOptions={auditQuery.sortOptions}
+                page={auditQuery.page}
+                totalPages={auditQuery.totalPages}
+                onPageChange={auditQuery.setPage}
+                total={auditQuery.total}
+                itemLabel="entries"
+              />
+              {auditQuery.pageItems.length === 0 ? (
+                <p className="text-center py-12 text-[var(--color-text-muted)]">
+                  {auditQuery.query ? 'No audit entries match this search.' : 'No admin actions recorded yet.'}
+                </p>
+              ) : (
+                auditQuery.pageItems.map((log) => (
                 <div key={log.id} className="p-2.5 rounded-lg bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-xs flex justify-between items-start">
                   <div>
                     <span className="font-mono font-bold text-[var(--color-brand-primary)]">{log.action}</span>
@@ -822,7 +1037,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-              ))}
+                ))
+              )}
             </div>
           )}
         </div>

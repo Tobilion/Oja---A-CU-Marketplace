@@ -105,7 +105,10 @@ export class MockRepository implements Repository {
     const target = users[idx];
 
     const wantsRoleChange = updates.adminLevel !== undefined || updates.badges !== undefined;
-    const wantsModeration = updates.isSuspended !== undefined || updates.isSellerApproved !== undefined;
+    const wantsModeration =
+      updates.isSuspended !== undefined ||
+      updates.isSellerApproved !== undefined ||
+      updates.sellerApplicationStatus !== undefined;
     const isSuper = actor.adminLevel === 'super_admin';
     const isMod = actor.adminLevel === 'moderator';
     if (wantsRoleChange && !isSuper) {
@@ -131,6 +134,7 @@ export class MockRepository implements Repository {
       adminLevel: target.adminLevel ?? null,
       isSuspended: target.isSuspended,
       isSellerApproved: target.isSellerApproved,
+      sellerApplicationStatus: target.sellerApplicationStatus ?? 'none',
     };
 
     // L-02 badge dependency: Verified Seller implies Seller.
@@ -146,6 +150,10 @@ export class MockRepository implements Repository {
       isSuspended: updates.isSuspended !== undefined ? updates.isSuspended : target.isSuspended,
       isSellerApproved:
         updates.isSellerApproved !== undefined ? updates.isSellerApproved : target.isSellerApproved,
+      sellerApplicationStatus:
+        updates.sellerApplicationStatus !== undefined
+          ? updates.sellerApplicationStatus
+          : target.sellerApplicationStatus,
     };
     if (badges.includes('Seller') || badges.includes('Verified Seller')) {
       updated.isSellerApproved = true;
@@ -159,6 +167,7 @@ export class MockRepository implements Repository {
       adminLevel: updated.adminLevel ?? null,
       isSuspended: updated.isSuspended,
       isSellerApproved: updated.isSellerApproved,
+      sellerApplicationStatus: updated.sellerApplicationStatus ?? 'none',
     };
     await this.logAdminAction({
       adminId: actor.id,

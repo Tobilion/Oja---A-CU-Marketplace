@@ -100,7 +100,10 @@ export class SupabaseRepository implements Repository {
       throw new Error('You cannot change your own role, badges, or suspension status.');
     }
     const wantsRoleChange = updates.adminLevel !== undefined || updates.badges !== undefined;
-    const wantsModeration = updates.isSuspended !== undefined || updates.isSellerApproved !== undefined;
+    const wantsModeration =
+      updates.isSuspended !== undefined ||
+      updates.isSellerApproved !== undefined ||
+      updates.sellerApplicationStatus !== undefined;
     const isSuper = actor.adminLevel === 'super_admin';
     const isMod = actor.adminLevel === 'moderator';
     if (wantsRoleChange && !isSuper) throw new Error('Only a Super admin can change badges or admin levels.');
@@ -119,6 +122,7 @@ export class SupabaseRepository implements Repository {
       adminLevel: target.adminLevel ?? null,
       isSuspended: target.isSuspended,
       isSellerApproved: target.isSellerApproved,
+      sellerApplicationStatus: target.sellerApplicationStatus ?? 'none',
     };
     let badges = updates.badges !== undefined ? [...updates.badges] : [...target.badges];
     if (badges.includes('Verified Seller') && !badges.includes('Seller')) badges.push('Seller');
@@ -127,6 +131,7 @@ export class SupabaseRepository implements Repository {
     if (updates.adminLevel !== undefined) payload.admin_level = updates.adminLevel;
     if (updates.isSuspended !== undefined) payload.is_suspended = updates.isSuspended;
     if (updates.isSellerApproved !== undefined) payload.is_seller_approved = updates.isSellerApproved;
+    if (updates.sellerApplicationStatus !== undefined) payload.seller_application_status = updates.sellerApplicationStatus;
     const { data, error } = await this.client.from('profiles').update(payload).eq('id', targetId).select().single();
     if (error) throw error;
     const updated = this.mapProfile(data);
@@ -143,6 +148,7 @@ export class SupabaseRepository implements Repository {
           adminLevel: updated.adminLevel ?? null,
           isSuspended: updated.isSuspended,
           isSellerApproved: updated.isSellerApproved,
+          sellerApplicationStatus: updated.sellerApplicationStatus ?? 'none',
         },
       }),
     });

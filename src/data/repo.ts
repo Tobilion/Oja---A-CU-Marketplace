@@ -40,6 +40,7 @@ export interface AdminUserUpdates {
   adminLevel?: AdminLevel | null;
   isSuspended?: boolean;
   isSellerApproved?: boolean;
+  sellerApplicationStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 }
 
 export interface Repository {
