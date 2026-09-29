@@ -5,18 +5,23 @@ What the code already does at every step: the repository interface
 transitions, and role guards are enforced in both. What changes per step is
 configuration and real-world trust, not application logic.
 
-## Step A — public demo on Netlify (fake money, demo mode)
+## Step A — public demo on Vercel (fake money, demo mode)
 
-You do by hand:
+You do by hand (Vercel is the confirmed host; the Netlify alternative below
+is kept only as a fallback):
 
-1. Push `main` to GitHub (already done: `git push origin main`).
-2. Netlify > Add new site > Import from Git > pick the repo.
-3. Build command `npm run build`, publish directory `dist`.
-4. Add a `public/_redirects` file containing `/* /index.html 200` BEFORE
-   deploying, or client-side deep links break (Netlify serves the SPA shell
-   for every route). This file does not exist yet; create it in this step.
-5. Environment: leave `VITE_APP_MODE` unset (demo is the default) or set it
+1. Push `main` to GitHub. Vercel auto-deploys `main` to production.
+2. Vercel dashboard > the `oja` project: confirm Framework Preset `Vite`,
+   Build Command `npm run build`, Output Directory `dist`, Root `./`.
+3. No `vercel.json` rewrite is needed: the app serves a single `index.html`
+   with modal (not route) navigation.
+4. Environment: leave `VITE_APP_MODE` unset (demo is the default) or set it
    to `demo`. Do NOT set Supabase variables yet.
+
+Fallback (Netlify): Build command `npm run build`, publish directory
+`dist`, plus a `public/_redirects` file containing `/* /index.html 200`
+for deep links. This file does not exist yet; create it only if Netlify is
+ever used.
 
 The code already does: offline mock database with 32 users, 6 businesses,
 103 listings, all order states, persona bar, demo banner, Reset demo data,
