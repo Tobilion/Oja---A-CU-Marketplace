@@ -27,7 +27,7 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({
       aria-label="Example conversation between a buyer and a seller"
       onMouseEnter={() => onHoverChange?.(true)}
       onMouseLeave={() => onHoverChange?.(false)}
-      className="relative w-[264px] sm:w-[280px] will-change-transform"
+      className="relative w-[264px] md:w-[248px] lg:w-[280px] will-change-transform"
     >
       <div className="relative rounded-[2.8rem] bg-[var(--color-text-main)] p-[8px] shadow-[0_24px_60px_rgba(0,0,0,0.30)]">
         <div className="relative overflow-hidden rounded-[2.3rem] bg-[var(--color-bg-base)]">
@@ -64,7 +64,7 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({
             </p>
           </div>
           {/* Chat body rendered by ChatSimulation */}
-          <div className="h-[330px] sm:h-[346px]">{children}</div>
+          <div className="h-[330px] md:h-[308px] lg:h-[346px]">{children}</div>
           {/* Fake input bar for the messaging look. Decorative. */}
           <div aria-hidden="true" className="flex items-center gap-1.5 border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)]">

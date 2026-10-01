@@ -66,7 +66,10 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
   const resumeTimer = useRef<number>(0);
   // Stepper state lives in refs so scheduling never happens inside a state
   // updater (updaters must stay pure). The effect below owns all timers.
-  const stepRef = useRef({ scene: 0, count: 0, typing: false, resting: false, hovering: false, hidden: false });
+  // Hover never pauses playback: a full freeze reads as broken. Manual
+  // scrolling still pauses auto-scroll (see onScroll below), and the loop
+  // still yields when the tab is hidden.
+  const stepRef = useRef({ scene: 0, count: 0, typing: false, resting: false, hidden: false });
 
   const scene = chatScenes[stepRef.current.scene % chatScenes.length] ?? chatScenes[0];
   const sellerAvatar = avatarById(scene?.sellerAvatarId ?? "laptop");
@@ -94,7 +97,7 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
       const st = stepRef.current;
       const s = chatScenes[st.scene % chatScenes.length];
       if (!s) return;
-      if (st.hovering || st.hidden || document.hidden) {
+      if (st.hidden || document.hidden) {
         timer = window.setTimeout(tick, 600);
         return;
       }
@@ -171,9 +174,6 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
       sellerName={scene?.sellerName ?? ""}
       status={typing ? "typing..." : "online"}
       outerRef={phoneRef}
-      onHoverChange={(h) => {
-        stepRef.current.hovering = h;
-      }}
     >
       <div
         ref={scrollRef}

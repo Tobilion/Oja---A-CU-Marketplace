@@ -76,7 +76,6 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
 
   // Hero phone tilt target for the orbit parallax loop.
   const phoneRef = useRef<HTMLDivElement | null>(null);
-  const [heroHover, setHeroHover] = useState(false);
 
   // Headline scramble-in, borrowed from the console TextScramble and the
   // portfolio useTextScramble: glyphs resolve into the exact existing copy.
@@ -123,7 +122,7 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
         </div>
 
         <div className="relative max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 pb-8 md:py-6 md:h-[640px] lg:h-[660px] flex flex-col justify-center">
-          <div className="grid items-center gap-8 md:gap-4 md:grid-cols-[55%_45%]">
+          <div className="grid items-center gap-8 md:gap-4 md:grid-cols-[52%_48%] lg:grid-cols-[55%_45%]">
             {/* LEFT: existing copy, left aligned */}
             <div className="relative z-10 space-y-4 text-left">
               <h1
@@ -153,18 +152,14 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
             </div>
 
             {/* RIGHT: phone with live chat, avatars orbiting around it.
-                Orbit is absolutely positioned inside this column and sized
-                to stay clear of the left column and the nav. */}
-            <div className="relative z-0 flex justify-center md:justify-end md:pr-10">
-              <div
-                className="relative"
-                onMouseEnter={() => setHeroHover(true)}
-                onMouseLeave={() => setHeroHover(false)}
-              >
+                Orbit lanes are sized to stay clear of the left column.
+                Hover never freezes anything: it only drives parallax. */}
+            <div className="relative z-0 flex justify-center md:justify-end md:pr-10 lg:pr-6">
+              <div className="relative">
                 <div className="relative z-20">
                   <ChatSimulation phoneRef={phoneRef} />
                 </div>
-                <OrbitAvatars phoneRef={phoneRef} paused={heroHover} />
+                <OrbitAvatars phoneRef={phoneRef} />
               </div>
             </div>
           </div>

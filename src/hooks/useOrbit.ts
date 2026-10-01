@@ -7,9 +7,8 @@ interface OrbitOptions {
   itemRefs: React.RefObject<Array<HTMLDivElement | null>>;
   chipRefs: React.RefObject<Array<HTMLDivElement | null>>;
   avatars: HeroAvatar[];
-  paused: boolean;
-  rx: number;
-  ry: number;
+  paused?: boolean;
+  radiusScale: number;
   sizeScale: number;
   enabled: boolean;
 }
@@ -18,15 +17,24 @@ interface OrbitOptions {
 // clear of the phone frame. Final px = depth size * avatar.scale * sizeScale.
 const DEPTH_SIZE: Record<HeroAvatar["depth"], number> = { 3: 84, 2: 66, 1: 52 };
 
+// One ellipse lane per depth, as the brief specifies: depth 3 is the inner
+// ring, depth 1 the outer ring. Separate lanes (instead of one shared
+// ellipse) plus a locked speed per lane keep avatars from piling up.
+const LANE: Record<HeroAvatar["depth"], { rx: number; ry: number; phase: number }> = {
+  3: { rx: 188, ry: 156, phase: 0 },
+  2: { rx: 218, ry: 182, phase: 0.55 },
+  1: { rx: 244, ry: 204, phase: 1.1 },
+};
+
 export function depthSize(depth: HeroAvatar["depth"]): number {
   return DEPTH_SIZE[depth];
 }
 
-export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, rx, ry, sizeScale, enabled }: OrbitOptions): void {
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
-  const geomRef = useRef({ rx, ry, sizeScale });
-  geomRef.current = { rx, ry, sizeScale };
+export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, radiusScale, sizeScale, enabled }: OrbitOptions): void {
+  const pausedRef = useRef(paused ?? false);
+  pausedRef.current = paused ?? false;
+  const geomRef = useRef({ radiusScale, sizeScale });
+  geomRef.current = { radiusScale, sizeScale };
 
   useEffect(() => {
     if (!enabled) return;
@@ -36,16 +44,29 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
     const items = itemRefs.current ?? [];
     const chips = chipRefs.current ?? [];
 
+    // Even phases within each lane, so every lane starts (and, with a
+    // locked speed per lane, stays) in a symmetric formation.
+    const lanePos = new Map<HeroAvatar["depth"], number>();
+    const laneCount = new Map<HeroAvatar["depth"], number>();
+    for (const a of avatars) laneCount.set(a.depth, (laneCount.get(a.depth) ?? 0) + 1);
+    const phases = avatars.map((a) => {
+      const pos = lanePos.get(a.depth) ?? 0;
+      lanePos.set(a.depth, pos + 1);
+      const count = laneCount.get(a.depth) ?? 1;
+      return (pos / count) * Math.PI * 2 + LANE[a.depth].phase - Math.PI / 2;
+    });
+
     // Place every avatar once. Chips sit on the outward side of the phone
     // so they never cover the chat text.
     const placeStatic = () => {
-      const { rx: crx, ry: cry } = geomRef.current;
+      const { radiusScale: rs } = geomRef.current;
       avatars.forEach((a, i) => {
         const el = items[i];
         if (!el) return;
-        const angle = (i / Math.max(avatars.length, 1)) * Math.PI * 2 - Math.PI / 2;
-        const x = Math.cos(angle) * crx;
-        const y = Math.sin(angle) * cry;
+        const lane = LANE[a.depth];
+        const angle = phases[i] ?? 0;
+        const x = Math.cos(angle) * lane.rx * rs;
+        const y = Math.sin(angle) * lane.ry * rs;
         const s = Math.sin(angle);
         const focus = 1 + 0.16 * s;
         el.style.transform = `translate3d(${x.toFixed(0)}px, ${y.toFixed(0)}px, 0) scale(${focus.toFixed(3)})`;
@@ -72,9 +93,9 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
     let raf = 0;
     let visible = true;
     let tabVisible = !document.hidden;
-    const phases = avatars.map((_, i) => (i / Math.max(avatars.length, 1)) * Math.PI * 2);
     const t0 = performance.now();
     // Pointer parallax state. Smoothed with lerp so rings trail softly.
+    // Hover drives parallax only; nothing freezes on hover.
     let targetPX = 0;
     let targetPY = 0;
     let smoothPX = 0;
@@ -121,12 +142,13 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
       smoothPY += (targetPY - smoothPY) * 0.06;
       tiltRY += (targetPX * 5 - tiltRY) * 0.08;
       tiltRX += (-targetPY * 5 - tiltRX) * 0.08;
-      const { rx: crx, ry: cry, sizeScale: ss } = geomRef.current;
+      const { radiusScale: rs, sizeScale: ss } = geomRef.current;
 
       for (let i = 0; i < avatars.length; i++) {
         const a = avatars[i];
         const el = items[i];
         if (!el || !a) continue;
+        const lane = LANE[a.depth];
         const angle = (phases[i] ?? 0) + (elapsed / a.orbitSeconds) * Math.PI * 2;
         const s = Math.sin(angle);
         // Continuous depth: the avatar gradually grows as it swings round
@@ -134,8 +156,8 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         // snapping between two sizes at the sides.
         const bob = Math.sin(elapsed * (0.9 + (i % 5) * 0.18) + i * 1.7) * 4;
         const depthShift = a.depth === 3 ? 1 : a.depth === 2 ? 0.6 : 0.35;
-        const x = Math.cos(angle) * crx + smoothPX * 12 * depthShift;
-        const y = Math.sin(angle) * cry + bob + smoothPY * 8 * depthShift;
+        const x = Math.cos(angle) * lane.rx * rs + smoothPX * 12 * depthShift;
+        const y = Math.sin(angle) * lane.ry * rs + bob + smoothPY * 8 * depthShift;
         const px = DEPTH_SIZE[a.depth] * a.scale * ss;
         const focus = 1 + 0.16 * s;
         el.style.transform =
@@ -171,5 +193,5 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         root.removeEventListener("pointerleave", onLeave);
       }
     };
-  }, [rootRef, phoneRef, itemRefs, chipRefs, avatars, rx, ry, sizeScale, enabled]);
+  }, [rootRef, phoneRef, itemRefs, chipRefs, avatars, radiusScale, sizeScale, enabled]);
 }

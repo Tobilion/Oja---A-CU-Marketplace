@@ -4,7 +4,7 @@ import { depthSize, useOrbit } from "../../hooks/useOrbit";
 
 interface OrbitAvatarsProps {
   phoneRef: React.RefObject<HTMLDivElement | null>;
-  paused: boolean;
+  paused?: boolean;
   compact?: boolean;
 }
 
@@ -58,14 +58,13 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
     return heroAvatars;
   }, [isTablet]);
 
-  // Ellipse clears the phone frame: phone half-width is ~144px, so rx
-  // stays well outside it even for the largest avatar.
-  const rx = isTablet ? 196 : 232;
-  const ry = isTablet ? 152 : 190;
-  const sizeScale = isTablet ? 0.85 : 1;
+  // Tighter lanes on tablet so the outer ring still clears the text
+  // column. Lane radii live in the hook; both scale together here.
+  const radiusScale = isTablet ? 0.64 : 1;
+  const sizeScale = isTablet ? 0.8 : 1;
   const enabled = bp !== "mobile";
 
-  useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, rx, ry, sizeScale, enabled });
+  useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, radiusScale, sizeScale, enabled });
 
   // Chip pulse when the chat highlights an avatar id. Box-shadow only:
   // the orbit loop owns the chip transform, so it is never touched here.
