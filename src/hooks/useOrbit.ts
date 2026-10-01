@@ -1,5 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { HeroAvatar } from "../data/heroAvatars";
+import {
+  DEPTH_SIZE,
+  depthSize,
+  avatarRadius,
+  ringPosition,
+} from "../utils/orbitMath";
+
+export { depthSize };
 
 interface OrbitOptions {
   rootRef: React.RefObject<HTMLDivElement | null>;
@@ -8,33 +16,16 @@ interface OrbitOptions {
   chipRefs: React.RefObject<Array<HTMLDivElement | null>>;
   avatars: HeroAvatar[];
   paused?: boolean;
-  radiusScale: number;
+  ring: { rx: number; ry: number };
   sizeScale: number;
   enabled: boolean;
 }
 
-// Display size per depth layer. Sidehoe-style: modest memojis that stay
-// clear of the phone frame. Final px = depth size * avatar.scale * sizeScale.
-const DEPTH_SIZE: Record<HeroAvatar["depth"], number> = { 3: 84, 2: 66, 1: 52 };
-
-// One ellipse lane per depth, as the brief specifies: depth 3 is the inner
-// ring, depth 1 the outer ring. Separate lanes (instead of one shared
-// ellipse) plus a locked speed per lane keep avatars from piling up.
-const LANE: Record<HeroAvatar["depth"], { rx: number; ry: number; phase: number }> = {
-  3: { rx: 188, ry: 156, phase: 0 },
-  2: { rx: 218, ry: 182, phase: 0.55 },
-  1: { rx: 244, ry: 204, phase: 1.1 },
-};
-
-export function depthSize(depth: HeroAvatar["depth"]): number {
-  return DEPTH_SIZE[depth];
-}
-
-export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, radiusScale, sizeScale, enabled }: OrbitOptions): void {
+export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, ring, sizeScale, enabled }: OrbitOptions): void {
   const pausedRef = useRef(paused ?? false);
   pausedRef.current = paused ?? false;
-  const geomRef = useRef({ radiusScale, sizeScale });
-  geomRef.current = { radiusScale, sizeScale };
+  const geomRef = useRef({ ring, sizeScale });
+  geomRef.current = { ring, sizeScale };
 
   useEffect(() => {
     if (!enabled) return;
@@ -43,42 +34,27 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const items = itemRefs.current ?? [];
     const chips = chipRefs.current ?? [];
-
-    // Even phases within each lane, so every lane starts (and, with a
-    // locked speed per lane, stays) in a symmetric formation.
-    const lanePos = new Map<HeroAvatar["depth"], number>();
-    const laneCount = new Map<HeroAvatar["depth"], number>();
-    for (const a of avatars) laneCount.set(a.depth, (laneCount.get(a.depth) ?? 0) + 1);
-    const phases = avatars.map((a) => {
-      const pos = lanePos.get(a.depth) ?? 0;
-      lanePos.set(a.depth, pos + 1);
-      const count = laneCount.get(a.depth) ?? 1;
-      return (pos / count) * Math.PI * 2 + LANE[a.depth].phase - Math.PI / 2;
-    });
+    const count = avatars.length;
 
     // Place every avatar once. Chips sit on the outward side of the phone
     // so they never cover the chat text.
     const placeStatic = () => {
-      const { radiusScale: rs } = geomRef.current;
+      const { ring: rg, sizeScale: ss } = geomRef.current;
       avatars.forEach((a, i) => {
         const el = items[i];
         if (!el) return;
-        const lane = LANE[a.depth];
-        const angle = phases[i] ?? 0;
-        const x = Math.cos(angle) * lane.rx * rs;
-        const y = Math.sin(angle) * lane.ry * rs;
-        const s = Math.sin(angle);
+        const p = ringPosition(i, count, 0, rg);
+        const s = p.s;
         const focus = 1 + 0.16 * s;
-        el.style.transform = `translate3d(${x.toFixed(0)}px, ${y.toFixed(0)}px, 0) scale(${focus.toFixed(3)})`;
+        el.style.transform = `translate3d(${p.x.toFixed(0)}px, ${p.y.toFixed(0)}px, 0) scale(${focus.toFixed(3)})`;
         el.style.opacity = (0.45 + 0.55 * ((s + 1) / 2)).toFixed(2);
         el.style.zIndex = s > 0 ? "30" : "5";
         const chip = chips[i];
         if (chip) {
-          const hyp = Math.hypot(x, y) || 1;
-          const px = DEPTH_SIZE[a.depth] * a.scale * geomRef.current.sizeScale;
-          const dist = px / 2 + 15;
+          const hyp = Math.hypot(p.x, p.y) || 1;
+          const dist = avatarRadius(a, ss) + 15;
           const fade = Math.min(1, Math.max(0, (s + 0.05) / 0.45));
-          chip.style.transform = `translate(-50%, -50%) translate(${(x / hyp * dist).toFixed(0)}px, ${(y / hyp * dist).toFixed(0)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
+          chip.style.transform = `translate(-50%, -50%) translate(${(p.x / hyp * dist).toFixed(0)}px, ${(p.y / hyp * dist).toFixed(0)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
           chip.style.opacity = fade.toFixed(2);
         }
       });
@@ -133,6 +109,25 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
       root.addEventListener("pointerleave", onLeave);
     }
 
+    // At most 3 chips visible at once. Front-half candidates, most-forward
+    // first, each accepted only if clear of already accepted chips, so no
+    // two chips ever overlap.
+    const pickChips = (cands: Array<{ i: number; s: number; cx: number; cy: number; w: number }>) => {
+      const shown = new Set<number>();
+      const accepted: typeof cands = [];
+      for (const c of cands) {
+        if (accepted.length >= 3) break;
+        const clear = accepted.every(
+          (o) => Math.abs(o.cx - c.cx) >= (o.w + c.w) / 2 + 8 || Math.abs(o.cy - c.cy) >= 26
+        );
+        if (clear) {
+          accepted.push(c);
+          shown.add(c.i);
+        }
+      }
+      return shown;
+    };
+
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       if (!visible || !tabVisible || pausedRef.current) return;
@@ -142,39 +137,74 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
       smoothPY += (targetPY - smoothPY) * 0.06;
       tiltRY += (targetPX * 5 - tiltRY) * 0.08;
       tiltRX += (-targetPY * 5 - tiltRX) * 0.08;
-      const { radiusScale: rs, sizeScale: ss } = geomRef.current;
+      const { ring: rg, sizeScale: ss } = geomRef.current;
 
-      for (let i = 0; i < avatars.length; i++) {
+      // First pass: positions for every avatar.
+      const laid: Array<{ x: number; y: number; s: number } | null> = [];
+      for (let i = 0; i < count; i++) {
         const a = avatars[i];
-        const el = items[i];
-        if (!el || !a) continue;
-        const lane = LANE[a.depth];
-        const angle = (phases[i] ?? 0) + (elapsed / a.orbitSeconds) * Math.PI * 2;
-        const s = Math.sin(angle);
-        // Continuous depth: the avatar gradually grows as it swings round
-        // to the front middle and shrinks as it goes behind, instead of
-        // snapping between two sizes at the sides.
+        if (!a) {
+          laid.push(null);
+          continue;
+        }
+        const p = ringPosition(i, count, elapsed, rg);
         const bob = Math.sin(elapsed * (0.9 + (i % 5) * 0.18) + i * 1.7) * 4;
         const depthShift = a.depth === 3 ? 1 : a.depth === 2 ? 0.6 : 0.35;
-        const x = Math.cos(angle) * lane.rx * rs + smoothPX * 12 * depthShift;
-        const y = Math.sin(angle) * lane.ry * rs + bob + smoothPY * 8 * depthShift;
+        laid.push({
+          x: p.x + smoothPX * 12 * depthShift,
+          y: p.y + bob + smoothPY * 8 * depthShift,
+          s: p.s,
+        });
+      }
+
+      // Second pass: choose visible chips before writing any styles.
+      const cands: Array<{ i: number; s: number; cx: number; cy: number; w: number }> = [];
+      for (let i = 0; i < count; i++) {
+        const a = avatars[i];
+        const l = laid[i];
+        if (!a || !l || !a.chip) continue;
+        const fade = Math.min(1, Math.max(0, (l.s + 0.05) / 0.45));
+        if (fade <= 0) continue;
+        const hyp = Math.hypot(l.x, l.y) || 1;
+        const dist = avatarRadius(a, ss) + 15;
+        cands.push({
+          i,
+          s: l.s,
+          cx: (l.x / hyp) * dist,
+          cy: (l.y / hyp) * dist,
+          w: a.chip.length * 5.5 + 22,
+        });
+      }
+      cands.sort((m, n) => n.s - m.s);
+      const shownChips = pickChips(cands);
+      const chipPos = new Map(cands.map((c) => [c.i, c]));
+
+      for (let i = 0; i < count; i++) {
+        const a = avatars[i];
+        const el = items[i];
+        const l = laid[i];
+        if (!el || !a || !l) continue;
+        const s = l.s;
+        // Continuous depth: gradual growth swinging to the front middle,
+        // gradual shrink going behind. Never snaps.
         const px = DEPTH_SIZE[a.depth] * a.scale * ss;
         const focus = 1 + 0.16 * s;
         el.style.transform =
-          `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${focus.toFixed(3)})`;
+          `translate3d(${l.x.toFixed(1)}px, ${l.y.toFixed(1)}px, 0) scale(${focus.toFixed(3)})`;
         el.style.opacity = (0.45 + 0.55 * ((s + 1) / 2)).toFixed(2);
         el.style.zIndex = s > 0 ? "30" : "5";
         const chip = chips[i];
         if (chip) {
-          // Outward side: push the chip away from the phone center along
-          // the radial direction, so it never covers the chat text.
-          // The chip fades (never snaps) in step with the avatar shrinking.
-          const hyp = Math.hypot(x, y) || 1;
-          const dist = px / 2 + 15;
+          const c = chipPos.get(i);
+          const on = c !== undefined && shownChips.has(i);
           const fade = Math.min(1, Math.max(0, (s + 0.05) / 0.45));
-          chip.style.transform =
-            `translate(-50%, -50%) translate(${(x / hyp * dist).toFixed(1)}px, ${(y / hyp * dist).toFixed(1)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
-          chip.style.opacity = fade.toFixed(2);
+          if (on && c) {
+            chip.style.transform =
+              `translate(-50%, -50%) translate(${c.cx.toFixed(1)}px, ${c.cy.toFixed(1)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
+            chip.style.opacity = fade.toFixed(2);
+          } else {
+            chip.style.opacity = "0";
+          }
         }
       }
       const phone = phoneRef.current;
@@ -193,5 +223,5 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         root.removeEventListener("pointerleave", onLeave);
       }
     };
-  }, [rootRef, phoneRef, itemRefs, chipRefs, avatars, radiusScale, sizeScale, enabled]);
+  }, [rootRef, phoneRef, itemRefs, chipRefs, avatars, ring, sizeScale, enabled]);
 }

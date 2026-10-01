@@ -145,6 +145,7 @@ export interface Repository {
 
   // Chat
   getThreadsForUser(userId: string): Promise<ChatThread[]>;
+  ensureThread(userIdA: string, userIdB: string): Promise<ChatThread>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
   sendMessage(msg: Omit<ChatMessage, 'id' | 'createdAt'>): Promise<ChatMessage>;
   blockUser(threadId: string, blockerId: string): Promise<void>;

@@ -1,5 +1,5 @@
 import React from "react";
-import { BadgeCheck, Plus } from "lucide-react";
+import { BadgeCheck, ChevronLeft, Plus } from "lucide-react";
 
 interface PhoneMockupProps {
   sellerAvatarSrc: string;
@@ -7,6 +7,8 @@ interface PhoneMockupProps {
   status: string;
   outerRef?: React.RefObject<HTMLDivElement | null>;
   onHoverChange?: (hovering: boolean) => void;
+  title?: string;
+  onBack?: () => void;
   children: React.ReactNode;
 }
 
@@ -18,6 +20,8 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({
   status,
   outerRef,
   onHoverChange,
+  title,
+  onBack,
   children,
 }) => {
   return (
@@ -45,24 +49,44 @@ export const PhoneMockup: React.FC<PhoneMockupProps> = ({
               <span className="inline-block h-[10px] w-[20px] rounded-[3px] border border-current opacity-60" />
             </span>
           </div>
-          {/* Contact header, centered like a stock messaging app */}
-          <div className="flex flex-col items-center border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-4 pb-2 pt-1.5 backdrop-blur">
-            <img
-              src={sellerAvatarSrc}
-              alt=""
-              width={512}
-              height={512}
-              decoding="async"
-              className="h-9 w-9 rounded-full border border-[var(--color-border)] object-cover"
-            />
-            <p className="mt-1 flex items-center gap-1 text-[12px] font-bold leading-tight text-[var(--color-text-main)]">
-              <span className="max-w-[170px] truncate">{sellerName}</span>
-              <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--color-brand-primary)]" aria-label="Verified seller" />
-            </p>
-            <p className="text-[10px] leading-tight text-[var(--color-brand-primary)]" aria-live="polite">
-              {status}
-            </p>
-          </div>
+          {/* Header: thread list title, or the contact with a back button */}
+          {title && !onBack ? (
+            <div className="border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-4 pb-2 pt-2 backdrop-blur">
+              <p className="text-center text-[14px] font-bold text-[var(--color-text-main)]">{title}</p>
+            </div>
+          ) : (
+            <div className="flex items-center border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 px-2 pb-2 pt-1.5 backdrop-blur">
+              {onBack ? (
+                <button
+                  onClick={onBack}
+                  aria-label="Back to conversations"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--color-brand-primary)] hover:bg-[var(--color-surface-subtle)]"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              ) : (
+                <span className="w-7 shrink-0" aria-hidden="true" />
+              )}
+              <div className="flex min-w-0 flex-1 flex-col items-center">
+                <img
+                  src={sellerAvatarSrc}
+                  alt=""
+                  width={512}
+                  height={512}
+                  decoding="async"
+                  className="h-9 w-9 rounded-full border border-[var(--color-border)] object-cover"
+                />
+                <p className="mt-1 flex items-center gap-1 text-[12px] font-bold leading-tight text-[var(--color-text-main)]">
+                  <span className="max-w-[170px] truncate">{sellerName}</span>
+                  <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--color-brand-primary)]" aria-label="Verified seller" />
+                </p>
+                <p className="text-[10px] leading-tight text-[var(--color-brand-primary)]" aria-live="polite">
+                  {status}
+                </p>
+              </div>
+              <span className="w-7 shrink-0" aria-hidden="true" />
+            </div>
+          )}
           {/* Chat body rendered by ChatSimulation */}
           <div className="h-[330px] md:h-[308px] lg:h-[346px]">{children}</div>
           {/* Fake input bar for the messaging look. Decorative. */}

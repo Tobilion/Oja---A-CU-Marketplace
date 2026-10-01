@@ -58,13 +58,13 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
     return heroAvatars;
   }, [isTablet]);
 
-  // Tighter lanes on tablet so the outer ring still clears the text
-  // column. Lane radii live in the hook; both scale together here.
-  const radiusScale = isTablet ? 0.64 : 1;
+  // Tighter ring on tablet so the orbit still clears the text column.
+  // Matches the tablet-10 layout proven by orbitMath.test.ts.
+  const ring = isTablet ? { rx: 154, ry: 128 } : { rx: 240, ry: 200 };
   const sizeScale = isTablet ? 0.8 : 1;
   const enabled = bp !== "mobile";
 
-  useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, radiusScale, sizeScale, enabled });
+  useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, ring, sizeScale, enabled });
 
   // Chip pulse when the chat highlights an avatar id. Box-shadow only:
   // the orbit loop owns the chip transform, so it is never touched here.

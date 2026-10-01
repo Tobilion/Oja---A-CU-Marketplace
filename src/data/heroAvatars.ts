@@ -5,8 +5,8 @@ export interface HeroAvatar {
   alt: string;
   chip?: string;
   scale: number;
-  orbitSeconds: number; // one locked speed per depth lane, so a lane's
-  depth: 1 | 2 | 3;    // formation holds forever instead of lapping into piles
+  orbitSeconds: number; // unused by the rigid ring (all avatars share one
+  depth: 1 | 2 | 3;    // 50s period so spacing never changes); kept for documentation
 }
 
 export const heroAvatars: HeroAvatar[] = [
@@ -27,10 +27,9 @@ export const heroAvatars: HeroAvatar[] = [
   { id: "wink",     src: "/avatars/Wink.webp",     alt: "Campus favourite seller",     chip: "Campus favourite", scale: 0.7,  orbitSeconds: 40, depth: 3 },
 ];
 
-// Lane speeds: inner ring fastest, outer slowest, so lanes drift past each
-// other and the composition never looks frozen. Depth 3: 40s, depth 2: 48s,
-// depth 1: 56s. Changed from varied per-avatar speeds because avatars on one
-// shared ellipse lapped each other and piled up within minutes.
+// Ring timing: one shared 50s revolution (see RING_PERIOD_SECONDS in
+// orbitMath.ts), so the formation is rigid and avatars can never bunch up.
+// Earlier per-avatar speeds lapped each other into piles within minutes.
 
 // Tablet orbit drops these three first, per the hero brief.
 export const tabletDroppedIds = ["gadgets", "designer", "hostel"];

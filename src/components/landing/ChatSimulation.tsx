@@ -3,11 +3,12 @@ import { CheckCheck, KeyRound, Package, ShieldCheck, Truck } from "lucide-react"
 import { avatarById } from "../../data/heroAvatars";
 import { chatScenes, type ChatItem } from "../../data/heroChatScript";
 import { PhoneMockup } from "./PhoneMockup";
+import { HeroThreadList } from "./HeroThreadList";
 
-const TYPING_MS = 1200;
-const BETWEEN_MIN = 800;
-const BETWEEN_MAX = 2200;
-const SCENE_REST_MS = 3500;
+const TYPING_MS = 1500;
+const BETWEEN_MIN = 1400;
+const BETWEEN_MAX = 2800;
+const SCENE_REST_MS = 4000;
 const SCRAMBLE_CHARS = "!<>-_\\/[]{}=+*^?#________";
 
 function delay(min = BETWEEN_MIN, max = BETWEEN_MAX): number {
@@ -68,8 +69,10 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
   // updater (updaters must stay pure). The effect below owns all timers.
   // Hover never pauses playback: a full freeze reads as broken. Manual
   // scrolling still pauses auto-scroll (see onScroll below), and the loop
-  // still yields when the tab is hidden.
-  const stepRef = useRef({ scene: 0, count: 0, typing: false, resting: false, hidden: false });
+  // still yields when the tab is hidden. fastOnce keeps the body from ever
+  // sitting blank: the first message arrives within half a second.
+  const stepRef = useRef({ scene: Math.floor(Math.random() * chatScenes.length), count: 0, typing: false, resting: false, hidden: false, fastOnce: true });
+  const [view, setView] = useState<"thread" | "list">("thread");
 
   const scene = chatScenes[stepRef.current.scene % chatScenes.length] ?? chatScenes[0];
   const sellerAvatar = avatarById(scene?.sellerAvatarId ?? "laptop");
@@ -106,6 +109,7 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
         st.scene = (st.scene + 1) % chatScenes.length;
         st.count = 0;
         st.typing = false;
+        st.fastOnce = true;
         setFading(false);
         sync();
         timer = window.setTimeout(tick, delay());
@@ -127,7 +131,8 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
       st.typing = false;
       st.count += 1;
       sync();
-      timer = window.setTimeout(tick, delay());
+      timer = window.setTimeout(tick, st.fastOnce ? 450 : delay());
+      st.fastOnce = false;
     };
     timer = window.setTimeout(tick, 700);
     return () => {
@@ -168,13 +173,31 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
     }
   };
 
+  const onSelectScene = (idx: number) => {
+    stepRef.current.scene = idx % chatScenes.length;
+    stepRef.current.count = 0;
+    stepRef.current.typing = false;
+    stepRef.current.resting = false;
+    stepRef.current.fastOnce = true;
+    setFading(false);
+    sync();
+    setView("thread");
+  };
+
   return (
     <PhoneMockup
       sellerAvatarSrc={sellerAvatar?.src ?? "/avatars/laptop.webp"}
       sellerName={scene?.sellerName ?? ""}
       status={typing ? "typing..." : "online"}
       outerRef={phoneRef}
+      title={view === "list" ? "Messages" : undefined}
+      onBack={view === "thread" ? () => setView("list") : undefined}
     >
+      {view === "list" ? (
+        <div className="h-full">
+          <HeroThreadList scenes={chatScenes} activeIdx={sceneIdx} onSelect={onSelectScene} />
+        </div>
+      ) : (
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -231,6 +254,7 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
           </div>
         )}
       </div>
+      )}
     </PhoneMockup>
   );
 };

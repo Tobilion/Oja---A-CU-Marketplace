@@ -1447,6 +1447,30 @@ export class MockRepository implements Repository {
     return threads.filter((t) => t.participantIds.includes(userId));
   }
 
+  // Finds the 1:1 thread for a pair (either direction) or creates and
+  // persists it. The id is direction-free so both sides converge on one row.
+  // Without this, messaging a seller left an unsaved local thread and the
+  // conversation never appeared in recent chats.
+  async ensureThread(userIdA: string, userIdB: string): Promise<ChatThread> {
+    const [first, second] = [userIdA, userIdB].sort();
+    const threads = MockStorage.getThreads();
+    const existing = threads.find((t) => {
+      const [a, b] = [...t.participantIds].sort();
+      return a === first && b === second;
+    });
+    if (existing) return existing;
+    const thread: ChatThread = {
+      id: `thread_${first}_${second}`,
+      participantIds: [first, second],
+      lastMessageSnippet: 'Started conversation',
+      lastMessageAt: new Date().toISOString(),
+      isRequest: true,
+    };
+    threads.push(thread);
+    MockStorage.setThreads(threads);
+    return thread;
+  }
+
   async getMessages(threadId: string): Promise<ChatMessage[]> {
     const messages = MockStorage.getMessages();
     return messages.filter((m) => m.threadId === threadId);
@@ -1463,12 +1487,24 @@ export class MockRepository implements Repository {
     messages.push(newMsg);
     MockStorage.setMessages(messages);
 
-    const thread = threads.find((t) => t.id === msg.threadId);
-    if (thread) {
+    // Safety net: a message must always belong to a persisted thread, or it
+    // is invisible to getThreadsForUser (the recent-chats bug).
+    let thread = threads.find((t) => t.id === msg.threadId);
+    if (!thread) {
+      const [first, second] = [msg.senderId, msg.receiverId].sort();
+      thread = {
+        id: msg.threadId,
+        participantIds: [first, second],
+        lastMessageSnippet: msg.content,
+        lastMessageAt: newMsg.createdAt,
+        isRequest: true,
+      };
+      threads.push(thread);
+    } else {
       thread.lastMessageSnippet = msg.content;
       thread.lastMessageAt = newMsg.createdAt;
-      MockStorage.setThreads(threads);
     }
+    MockStorage.setThreads(threads);
 
     return newMsg;
   }

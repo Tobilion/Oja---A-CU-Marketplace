@@ -823,6 +823,28 @@ export class SupabaseRepository implements Repository {
     return (data || []).map(this.mapThread);
   }
 
+  // Direction-free 1:1 thread: both sides converge on thread_<min>_<max>.
+  async ensureThread(userIdA: string, userIdB: string): Promise<ChatThread> {
+    const [first, second] = [userIdA, userIdB].sort();
+    const id = `thread_${first}_${second}`;
+    const { data: existing, error: selError } = await this.client.from('chat_threads').select('*').eq('id', id).maybeSingle();
+    if (selError) throw selError;
+    if (existing) return this.mapThread(existing);
+    const { data, error } = await this.client
+      .from('chat_threads')
+      .insert({
+        id,
+        participant_ids: [first, second],
+        last_message_snippet: 'Started conversation',
+        last_message_at: new Date().toISOString(),
+        is_request: true,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapThread(data);
+  }
+
   async getMessages(threadId: string): Promise<ChatMessage[]> {
     const { data, error } = await this.client.from('chat_messages').select('*').eq('thread_id', threadId).order('created_at', { ascending: true });
     if (error) throw error;
@@ -840,6 +862,12 @@ export class SupabaseRepository implements Repository {
     };
     const { data, error } = await this.client.from('chat_messages').insert(payload).select().single();
     if (error) throw error;
+    // Keep the thread row's preview fresh so recent chats sort correctly.
+    // A missing row updates zero rows without erroring.
+    await this.client
+      .from('chat_threads')
+      .update({ last_message_snippet: msg.content, last_message_at: data.created_at })
+      .eq('id', msg.threadId);
     return this.mapMessage(data);
   }
 
