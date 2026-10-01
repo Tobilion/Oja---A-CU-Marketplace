@@ -3,11 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { SearchBar } from './SearchBar';
 import { FilterBar } from './FilterBar';
 import { ListingCard } from './ListingCard';
 import { TrustStrip } from '../layout/TrustStrip';
+import { AvatarRow, OrbitAvatars } from '../landing/OrbitAvatars';
+import { ChatSimulation } from '../landing/ChatSimulation';
 import { Listing, Category, Hall, UserProfile } from '../../types';
 import { FilterOptions, filterAndSearchListings } from '../../utils/search';
 import { Package, Plus, Sparkles } from 'lucide-react';
@@ -72,25 +74,75 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
     setFilters({ sortBy: 'newest' });
   };
 
+  // Hero phone tilt target for the orbit parallax loop.
+  const phoneRef = useRef<HTMLDivElement | null>(null);
+  const [heroHover, setHeroHover] = useState(false);
+
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Editorial Hero Section (Restrained, Spacious) */}
-      <section className="pt-10 pb-8 px-4 sm:px-6 max-w-7xl mx-auto w-full text-center">
-        <div className="max-w-3xl mx-auto space-y-4">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold font-display tracking-tight text-[var(--color-text-main)] text-balance">
-            Campus trade, kept honest.
-          </h1>
-          <p className="text-sm sm:text-base text-[var(--color-text-muted)] max-w-xl mx-auto leading-relaxed">
-            The student-to-student marketplace for Covenant University. Verified matric identities, escrow-protected payments, and room deliveries by vetted hall runners.
-          </p>
+      {/* Hero: existing headline/subhead/search on the left, live phone + orbit on the right.
+          Copy and headline font are unchanged. No buttons or trust items here;
+          the trust strip below keeps that job. */}
+      <section className="relative overflow-hidden">
+        {/* Pastel blobs. Transform and opacity only. Theme tinted. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-emerald-200/50 blur-3xl dark:bg-indigo-950/60 animate-[hero-drift_26s_ease-in-out_infinite]" />
+          <div className="absolute right-[30%] top-40 h-64 w-64 rounded-full bg-amber-100/70 blur-3xl dark:bg-orange-950/40 animate-[hero-drift_32s_ease-in-out_infinite_reverse]" />
+          <style>{`@keyframes hero-drift { 0%,100% { transform: translate3d(0,0,0); opacity: 0.8; } 50% { transform: translate3d(24px,-18px,0); opacity: 1; } }`}</style>
+        </div>
 
-          {/* Search Input Bar */}
-          <div className="pt-2">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onSearchSubmit={(val) => setSearchQuery(val)}
-            />
+        <div className="relative max-w-7xl mx-auto w-full px-4 sm:px-6 pt-10 pb-8 md:py-6 md:h-[640px] lg:h-[660px] flex flex-col justify-center">
+          <div className="grid items-center gap-8 md:gap-4 md:grid-cols-[55%_45%]">
+            {/* LEFT: existing copy, left aligned */}
+            <div className="relative z-10 space-y-4 text-left">
+              <h1 className="font-extrabold font-display tracking-tight text-[var(--color-text-main)] text-left text-[1.9rem] leading-[1.08] sm:text-4xl md:text-[2.1rem] lg:text-[2.75rem]">
+                {["Campus", "trade,", "kept", "honest."].map((word, i) => (
+                  <span
+                    key={i}
+                    className="inline-block animate-[hero-word_0.55s_ease-out_both] will-change-transform"
+                    style={{ animationDelay: `${i * 0.09}s` }}
+                  >
+                    {word}
+                    {i < 3 ? " " : ""}
+                  </span>
+                ))}
+                <style>{`@keyframes hero-word { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } } @media (prefers-reduced-motion: reduce) { .animate-\\[hero-word_0\\.55s_ease-out_both\\] { animation: none; } }`}</style>
+              </h1>
+              <p className="text-sm sm:text-base text-[var(--color-text-muted)] leading-relaxed text-left max-w-md mx-0">
+                The student-to-student marketplace for Covenant University. Verified matric identities, escrow-protected payments, and room deliveries by vetted hall runners.
+              </p>
+
+              {/* Search keeps all current behavior. Left column is under
+                  max-w-2xl so the bar fills the column width. */}
+              <div className="pt-2 w-full [&>div]:mx-0 [&>div]:max-w-none">
+                <SearchBar
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  onSearchSubmit={(val) => setSearchQuery(val)}
+                />
+              </div>
+            </div>
+
+            {/* MOBILE: overlapping avatar row between search and phone */}
+            <div className="md:hidden relative z-10">
+              <AvatarRow />
+            </div>
+
+            {/* RIGHT: phone with live chat, avatars orbiting around it.
+                Orbit is absolutely positioned inside this column and sized
+                to stay clear of the left column and the nav. */}
+            <div className="relative z-0 flex justify-center md:justify-end md:pr-10">
+              <div
+                className="relative"
+                onMouseEnter={() => setHeroHover(true)}
+                onMouseLeave={() => setHeroHover(false)}
+              >
+                <div className="relative z-20">
+                  <ChatSimulation phoneRef={phoneRef} />
+                </div>
+                <OrbitAvatars phoneRef={phoneRef} paused={heroHover} />
+              </div>
+            </div>
           </div>
         </div>
       </section>
