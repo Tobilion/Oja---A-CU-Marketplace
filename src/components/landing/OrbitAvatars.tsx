@@ -122,7 +122,7 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
                 // Tubelight-pill styling from the portfolio nav: frosted
                 // pill, tiny type, soft shadow. Position is written every
                 // frame by the orbit loop (outward side of the avatar).
-                className="absolute left-1/2 top-1/2 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/90 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--color-text-main)] shadow-md backdrop-blur-md will-change-transform"
+                className="absolute left-1/2 top-1/2 max-w-[112px] truncate whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/90 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--color-text-main)] shadow-md backdrop-blur-md will-change-transform"
                 style={{ opacity: 0 }}
               >
                 {a.chip}

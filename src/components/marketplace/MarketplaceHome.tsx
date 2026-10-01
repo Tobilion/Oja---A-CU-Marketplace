@@ -152,9 +152,9 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
             </div>
 
             {/* RIGHT: phone with live chat, avatars orbiting around it.
-                Orbit lanes are sized to stay clear of the left column.
+                The rigid ring is sized to stay clear of the left column.
                 Hover never freezes anything: it only drives parallax. */}
-            <div className="relative z-0 flex justify-center md:justify-end md:pr-10 lg:pr-6">
+            <div className="relative z-0 flex justify-center md:justify-end md:pr-10 lg:pr-6 xl:pr-24">
               <div className="relative">
                 <div className="relative z-20">
                   <ChatSimulation phoneRef={phoneRef} />

@@ -52,8 +52,8 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         const chip = chips[i];
         if (chip) {
           const hyp = Math.hypot(p.x, p.y) || 1;
-          const dist = avatarRadius(a, ss) + 15;
-          const fade = Math.min(1, Math.max(0, (s + 0.05) / 0.45));
+          const dist = avatarRadius(a, ss) + 8;
+          const fade = 0.35 + 0.65 * Math.min(1, Math.max(0, (s + 0.05) / 0.45));
           chip.style.transform = `translate(-50%, -50%) translate(${(p.x / hyp * dist).toFixed(0)}px, ${(p.y / hyp * dist).toFixed(0)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
           chip.style.opacity = fade.toFixed(2);
         }
@@ -109,24 +109,9 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
       root.addEventListener("pointerleave", onLeave);
     }
 
-    // At most 3 chips visible at once. Front-half candidates, most-forward
-    // first, each accepted only if clear of already accepted chips, so no
-    // two chips ever overlap.
-    const pickChips = (cands: Array<{ i: number; s: number; cx: number; cy: number; w: number }>) => {
-      const shown = new Set<number>();
-      const accepted: typeof cands = [];
-      for (const c of cands) {
-        if (accepted.length >= 3) break;
-        const clear = accepted.every(
-          (o) => Math.abs(o.cx - c.cx) >= (o.w + c.w) / 2 + 8 || Math.abs(o.cy - c.cy) >= 26
-        );
-        if (clear) {
-          accepted.push(c);
-          shown.add(c.i);
-        }
-      }
-      return shown;
-    };
+    // Chip fade from depth: full on the front, faint behind. Never fully
+    // zero while the avatar shows, so every character keeps its label.
+    const chipFade = (s: number) => 0.35 + 0.65 * Math.min(1, Math.max(0, (s + 0.05) / 0.45));
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
@@ -157,28 +142,8 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         });
       }
 
-      // Second pass: choose visible chips before writing any styles.
-      const cands: Array<{ i: number; s: number; cx: number; cy: number; w: number }> = [];
-      for (let i = 0; i < count; i++) {
-        const a = avatars[i];
-        const l = laid[i];
-        if (!a || !l || !a.chip) continue;
-        const fade = Math.min(1, Math.max(0, (l.s + 0.05) / 0.45));
-        if (fade <= 0) continue;
-        const hyp = Math.hypot(l.x, l.y) || 1;
-        const dist = avatarRadius(a, ss) + 15;
-        cands.push({
-          i,
-          s: l.s,
-          cx: (l.x / hyp) * dist,
-          cy: (l.y / hyp) * dist,
-          w: a.chip.length * 5.5 + 22,
-        });
-      }
-      cands.sort((m, n) => n.s - m.s);
-      const shownChips = pickChips(cands);
-      const chipPos = new Map(cands.map((c) => [c.i, c]));
-
+      // Second pass: write styles. Every avatar keeps its chip, riding
+      // outward so it never covers chat text, fading with depth.
       for (let i = 0; i < count; i++) {
         const a = avatars[i];
         const el = items[i];
@@ -195,16 +160,12 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         el.style.zIndex = s > 0 ? "30" : "5";
         const chip = chips[i];
         if (chip) {
-          const c = chipPos.get(i);
-          const on = c !== undefined && shownChips.has(i);
-          const fade = Math.min(1, Math.max(0, (s + 0.05) / 0.45));
-          if (on && c) {
-            chip.style.transform =
-              `translate(-50%, -50%) translate(${c.cx.toFixed(1)}px, ${c.cy.toFixed(1)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
-            chip.style.opacity = fade.toFixed(2);
-          } else {
-            chip.style.opacity = "0";
-          }
+          const hyp = Math.hypot(l.x, l.y) || 1;
+          const dist = px / 2 + 8;
+          const fade = chipFade(s);
+          chip.style.transform =
+            `translate(-50%, -50%) translate(${(l.x / hyp * dist).toFixed(1)}px, ${(l.y / hyp * dist).toFixed(1)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
+          chip.style.opacity = fade.toFixed(2);
         }
       }
       const phone = phoneRef.current;
