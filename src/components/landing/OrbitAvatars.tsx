@@ -8,7 +8,7 @@ interface OrbitAvatarsProps {
   compact?: boolean;
 }
 
-function useBreakpoint(): "mobile" | "tablet" | "desktop" {
+export function useHeroBreakpoint(): "mobile" | "tablet" | "desktop" {
   const [bp, setBp] = React.useState<"mobile" | "tablet" | "desktop">(() =>
     typeof window === "undefined" ? "desktop" : window.innerWidth < 768 ? "mobile" : window.innerWidth < 1024 ? "tablet" : "desktop"
   );
@@ -47,48 +47,50 @@ export const AvatarRow: React.FC = () => {
 };
 
 export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, compact }) => {
-  const bp = useBreakpoint();
+  const bp = useHeroBreakpoint();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
   const chipRefs = useRef<Array<HTMLDivElement | null>>([]);
 
+  const isTablet = bp === "tablet" || compact;
   const avatars: HeroAvatar[] = useMemo(() => {
-    if (bp === "tablet" || compact) return heroAvatars.filter((a) => !tabletDroppedIds.includes(a.id));
+    if (isTablet) return heroAvatars.filter((a) => !tabletDroppedIds.includes(a.id));
     return heroAvatars;
-  }, [bp, compact]);
+  }, [isTablet]);
 
-  const rx = bp === "tablet" || compact ? 150 : 185;
-  const ry = bp === "tablet" || compact ? 118 : 148;
+  // Ellipse clears the phone frame: phone half-width is ~144px, so rx
+  // stays well outside it even for the largest avatar.
+  const rx = isTablet ? 196 : 232;
+  const ry = isTablet ? 152 : 190;
+  const sizeScale = isTablet ? 0.85 : 1;
+  const enabled = bp !== "mobile";
 
-  useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, rx, ry });
+  useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, paused, rx, ry, sizeScale, enabled });
 
-  // Chip pulse when the chat highlights an avatar id.
+  // Chip pulse when the chat highlights an avatar id. Box-shadow only:
+  // the orbit loop owns the chip transform, so it is never touched here.
   useEffect(() => {
     const onHighlight = (e: Event) => {
       const id = (e as CustomEvent<string>).detail;
       const idx = avatars.findIndex((a) => a.id === id);
       const chip = chipRefs.current[idx];
-      const item = itemRefs.current[idx];
-      if (!chip || !item) return;
-      chip.style.transition = "transform 0.3s ease, box-shadow 0.3s ease, opacity 0.4s ease";
-      chip.style.transform = "translate(-50%, 6px) scale(1.12)";
+      if (!chip) return;
       chip.style.boxShadow = "0 0 0 3px var(--color-brand-primary), 0 8px 24px rgba(0,0,0,0.25)";
-      item.style.filter = "drop-shadow(0 0 14px var(--color-brand-primary))";
       window.setTimeout(() => {
-        chip.style.transform = "translate(-50%, 6px) scale(1)";
         chip.style.boxShadow = "";
-        item.style.filter = "";
       }, 1600);
     };
     window.addEventListener("oja:hero-highlight", onHighlight);
     return () => window.removeEventListener("oja:hero-highlight", onHighlight);
   }, [avatars]);
 
-  // Mobile uses AvatarRow instead. This layer only renders on md+.
+  // Mobile uses AvatarRow instead, so no orbit loop runs there.
+  if (!enabled) return null;
+
   return (
     <div ref={rootRef} aria-hidden="true" className="absolute inset-0 pointer-events-none hidden md:block">
       {avatars.map((a, i) => {
-        const size = Math.round(depthSize(a.depth) * a.scale);
+        const px = Math.round(depthSize(a.depth) * a.scale * sizeScale);
         const eager = a.depth === 3;
         return (
           <div
@@ -96,8 +98,7 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
             ref={(el) => {
               itemRefs.current[i] = el;
             }}
-            className="absolute left-1/2 top-1/2 will-change-transform"
-            style={{ width: size, height: size + 30 }}
+            className="absolute left-1/2 top-1/2 h-0 w-0 will-change-transform"
           >
             <img
               src={a.src}
@@ -107,10 +108,12 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
               decoding="async"
               loading={eager ? "eager" : "lazy"}
               draggable={false}
-              className="rounded-full object-cover bg-[var(--color-surface)] shadow-[0_14px_30px_rgba(0,0,0,0.22)] mx-auto"
+              className="absolute rounded-full object-cover bg-[var(--color-surface)] shadow-[0_10px_22px_rgba(0,0,0,0.20)]"
               style={{
-                width: size,
-                height: size,
+                width: px,
+                height: px,
+                left: -px / 2,
+                top: -px / 2,
                 filter: a.depth === 1 ? "blur(1px)" : undefined,
               }}
             />
@@ -119,10 +122,11 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
                 ref={(el) => {
                   chipRefs.current[i] = el;
                 }}
-                // Tubelight-pill styling borrowed from the portfolio nav:
-                // frosted pill with a top glow when active.
-                className="absolute left-1/2 top-full whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/85 backdrop-blur-md px-2.5 py-1 text-[10px] font-semibold text-[var(--color-text-main)] shadow-lg will-change-transform"
-                style={{ transform: "translate(-50%, 6px)", opacity: 0 }}
+                // Tubelight-pill styling from the portfolio nav: frosted
+                // pill, tiny type, soft shadow. Position is written every
+                // frame by the orbit loop (outward side of the avatar).
+                className="absolute left-0 top-0 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-md px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--color-text-main)] shadow-md will-change-transform"
+                style={{ opacity: 0 }}
               >
                 {a.chip}
               </div>

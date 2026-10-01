@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { SearchBar } from './SearchBar';
 import { FilterBar } from './FilterBar';
 import { ListingCard } from './ListingCard';
@@ -78,6 +78,37 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
   const phoneRef = useRef<HTMLDivElement | null>(null);
   const [heroHover, setHeroHover] = useState(false);
 
+  // Headline scramble-in, borrowed from the console TextScramble and the
+  // portfolio useTextScramble: glyphs resolve into the exact existing copy.
+  // Copy and font are unchanged; only the entrance is animated.
+  const HEADLINE = "Campus trade, kept honest.";
+  const [headline, setHeadline] = useState(HEADLINE);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setHeadline(HEADLINE);
+      return;
+    }
+    const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let frame = 0;
+    let timer = 0;
+    const total = HEADLINE.length * 2;
+    const tick = () => {
+      frame += 1;
+      const resolved = Math.floor((frame / total) * HEADLINE.length);
+      let out = "";
+      for (let i = 0; i < HEADLINE.length; i++) {
+        const ch = HEADLINE[i];
+        if (ch === " " || i < resolved) out += ch;
+        else out += CHARS[Math.floor(Math.random() * CHARS.length)];
+      }
+      setHeadline(out);
+      if (frame < total) timer = window.setTimeout(tick, 35);
+      else setHeadline(HEADLINE);
+    };
+    timer = window.setTimeout(tick, 250);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Hero: existing headline/subhead/search on the left, live phone + orbit on the right.
@@ -95,18 +126,11 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
           <div className="grid items-center gap-8 md:gap-4 md:grid-cols-[55%_45%]">
             {/* LEFT: existing copy, left aligned */}
             <div className="relative z-10 space-y-4 text-left">
-              <h1 className="font-extrabold font-display tracking-tight text-[var(--color-text-main)] text-left text-[1.9rem] leading-[1.08] sm:text-4xl md:text-[2.1rem] lg:text-[2.75rem]">
-                {["Campus", "trade,", "kept", "honest."].map((word, i) => (
-                  <span
-                    key={i}
-                    className="inline-block animate-[hero-word_0.55s_ease-out_both] will-change-transform"
-                    style={{ animationDelay: `${i * 0.09}s` }}
-                  >
-                    {word}
-                    {i < 3 ? " " : ""}
-                  </span>
-                ))}
-                <style>{`@keyframes hero-word { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } } @media (prefers-reduced-motion: reduce) { .animate-\\[hero-word_0\\.55s_ease-out_both\\] { animation: none; } }`}</style>
+              <h1
+                aria-label={HEADLINE}
+                className="font-extrabold font-display tracking-tight text-[var(--color-text-main)] text-left text-[1.9rem] leading-[1.08] sm:text-4xl md:text-[2.1rem] lg:text-[2.75rem]"
+              >
+                <span aria-hidden="true">{headline}</span>
               </h1>
               <p className="text-sm sm:text-base text-[var(--color-text-muted)] leading-relaxed text-left max-w-md mx-0">
                 The student-to-student marketplace for Covenant University. Verified matric identities, escrow-protected payments, and room deliveries by vetted hall runners.

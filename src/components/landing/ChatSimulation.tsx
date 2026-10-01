@@ -49,7 +49,7 @@ const DeliveryCode: React.FC<{ code: string }> = ({ code }) => {
 };
 
 function CardIcon({ variant }: { variant: Extract<ChatItem, { kind: "card" }>["variant"] }) {
-  const cls = "h-4 w-4 text-[var(--color-brand-primary)]";
+  const cls = "h-3.5 w-3.5 text-[var(--color-brand-primary)]";
   if (variant === "payment-held") return <ShieldCheck className={cls} />;
   if (variant === "order-placed") return <Package className={cls} />;
   if (variant === "delivery-code") return <KeyRound className={cls} />;
@@ -61,79 +61,78 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
   const [count, setCount] = useState(0);
   const [typing, setTyping] = useState(false);
   const [fading, setFading] = useState(false);
-  const [hovering, setHovering] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoRef = useRef(true);
   const resumeTimer = useRef<number>(0);
-  const stateRef = useRef({ hovering: false, visible: true, hidden: false });
-  stateRef.current.hovering = hovering;
+  // Stepper state lives in refs so scheduling never happens inside a state
+  // updater (updaters must stay pure). The effect below owns all timers.
+  const stepRef = useRef({ scene: 0, count: 0, typing: false, resting: false, hovering: false, hidden: false });
 
-  const scene = chatScenes[sceneIdx % chatScenes.length] ?? chatScenes[0];
+  const scene = chatScenes[stepRef.current.scene % chatScenes.length] ?? chatScenes[0];
   const sellerAvatar = avatarById(scene?.sellerAvatarId ?? "laptop");
+  const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Pause when hero scrolled away or tab hidden.
-  useEffect(() => {
-    const onVis = () => {
-      stateRef.current.hidden = document.hidden;
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
+  // Keep render state in sync with the stepper after each tick.
+  const sync = () => {
+    const s = stepRef.current;
+    setSceneIdx(s.scene % chatScenes.length);
+    setCount(s.count);
+    setTyping(s.typing);
+  };
 
   // Playback loop. Timers only, no per-frame renders.
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setCount(scene?.items.length ?? 0);
+      stepRef.current.count = chatScenes[0]?.items.length ?? 0;
+      sync();
       return;
     }
     let cancelled = false;
     let timer = 0;
-    const step = () => {
+    const tick = () => {
       if (cancelled) return;
-      const s = chatScenes[sceneIdx % chatScenes.length];
+      const st = stepRef.current;
+      const s = chatScenes[st.scene % chatScenes.length];
       if (!s) return;
-      if (stateRef.current.hovering || stateRef.current.hidden) {
-        timer = window.setTimeout(step, 600);
+      if (st.hovering || st.hidden || document.hidden) {
+        timer = window.setTimeout(tick, 600);
         return;
       }
-      setCount((c) => {
-        if (c >= s.items.length) {
-          timer = window.setTimeout(() => {
-            if (cancelled) return;
-            setFading(true);
-            timer = window.setTimeout(() => {
-              if (cancelled) return;
-              setSceneIdx((i) => (i + 1) % chatScenes.length);
-              setCount(0);
-              setTyping(false);
-              setFading(false);
-              step();
-            }, 450);
-          }, SCENE_REST_MS);
-          return c;
-        }
-        const next = s.items[c];
-        if (next?.kind === "seller") {
-          setTyping(true);
-          timer = window.setTimeout(() => {
-            if (cancelled) return;
-            setTyping(false);
-            setCount(c + 1);
-            timer = window.setTimeout(step, delay());
-          }, TYPING_MS);
-        } else {
-          setCount(c + 1);
-          timer = window.setTimeout(step, delay());
-        }
-        return c;
-      });
+      if (st.resting) {
+        st.resting = false;
+        st.scene = (st.scene + 1) % chatScenes.length;
+        st.count = 0;
+        st.typing = false;
+        setFading(false);
+        sync();
+        timer = window.setTimeout(tick, delay());
+        return;
+      }
+      if (st.count >= s.items.length) {
+        st.resting = true;
+        setFading(true);
+        timer = window.setTimeout(tick, SCENE_REST_MS);
+        return;
+      }
+      const next = s.items[st.count];
+      if (next?.kind === "seller" && !st.typing) {
+        st.typing = true;
+        sync();
+        timer = window.setTimeout(tick, TYPING_MS);
+        return;
+      }
+      st.typing = false;
+      st.count += 1;
+      sync();
+      timer = window.setTimeout(tick, delay());
     };
-    timer = window.setTimeout(step, 700);
+    timer = window.setTimeout(tick, 700);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [sceneIdx, scene?.items.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const visible = (scene?.items ?? []).slice(0, count);
 
@@ -149,7 +148,8 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
   // Auto-scroll unless the user recently scrolled manually.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && autoRef.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (el && autoRef.current) el.scrollTo({ top: el.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [count, typing, sceneIdx]);
 
   const onScroll = () => {
@@ -171,21 +171,24 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
       sellerName={scene?.sellerName ?? ""}
       status={typing ? "typing..." : "online"}
       outerRef={phoneRef}
-      onHoverChange={setHovering}
+      onHoverChange={(h) => {
+        stepRef.current.hovering = h;
+      }}
     >
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className={`h-full space-y-2 overflow-y-auto px-3 py-3 transition-opacity duration-500 ${fading ? "opacity-0" : "opacity-100"}`}
+        className={`h-full space-y-1.5 overflow-y-auto px-2.5 py-2 transition-opacity duration-500 ${fading ? "opacity-0" : "opacity-100"}`}
       >
+        <p className="pb-1 text-center text-[9px] font-medium text-[var(--color-text-muted)]">Today 9:41 AM</p>
         {visible.map((item, i) => {
           if (item.kind === "buyer") {
             return (
               <div key={i} className="flex justify-end">
-                <div className="max-w-[82%] rounded-2xl rounded-br-md bg-[var(--color-brand-primary)] px-3 py-1.5 text-[12px] leading-snug text-white shadow-sm">
+                <div className="max-w-[78%] rounded-[18px] rounded-br-[5px] bg-[var(--color-brand-primary)] px-2.5 py-1 text-[11.5px] leading-snug text-white">
                   <p>{item.text}</p>
-                  <p className="mt-0.5 flex items-center justify-end gap-1 text-[9px] text-white/80">
-                    9:41 <CheckCheck className="h-3 w-3" />
+                  <p className="mt-0.5 flex items-center justify-end gap-0.5 text-[8px] leading-none text-white/75">
+                    9:41 <CheckCheck className="h-2.5 w-2.5" />
                   </p>
                 </div>
               </div>
@@ -194,9 +197,8 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
           if (item.kind === "seller") {
             return (
               <div key={i} className="flex justify-start">
-                <div className="max-w-[82%] rounded-2xl rounded-bl-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] leading-snug text-[var(--color-text-main)] shadow-sm">
+                <div className="max-w-[78%] rounded-[18px] rounded-bl-[5px] bg-[var(--color-surface-subtle)] px-2.5 py-1 text-[11.5px] leading-snug text-[var(--color-text-main)]">
                   <p>{item.text}</p>
-                  <p className="mt-0.5 text-right text-[9px] text-[var(--color-text-muted)]">9:41</p>
                 </div>
               </div>
             );
@@ -204,24 +206,24 @@ export const ChatSimulation: React.FC<{ phoneRef: React.RefObject<HTMLDivElement
           return (
             <div
               key={i}
-              className="rounded-xl border border-[var(--color-brand-primary)]/25 bg-[var(--color-surface)] px-3 py-2 shadow-sm"
+              className="mx-1 rounded-xl border border-[var(--color-brand-primary)]/25 bg-[var(--color-surface)] px-2.5 py-1.5 shadow-sm"
             >
-              <p className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--color-text-main)]">
+              <p className="flex items-center gap-1.5 text-[10.5px] font-bold text-[var(--color-text-main)]">
                 <CardIcon variant={item.variant} /> {item.title}
               </p>
               {item.variant === "delivery-code" ? (
-                <div className="mt-1 text-center">
+                <div className="mt-0.5 text-center">
                   <DeliveryCode code={item.body} />
                 </div>
               ) : (
-                <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">{item.body}</p>
+                <p className="mt-0.5 text-[10.5px] leading-snug text-[var(--color-text-muted)]">{item.body}</p>
               )}
             </div>
           );
         })}
         {typing && (
           <div className="flex justify-start">
-            <div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2" aria-label="Seller is typing">
+            <div className="flex items-center gap-1 rounded-[18px] rounded-bl-[5px] bg-[var(--color-surface-subtle)] px-3 py-2" aria-label="Seller is typing">
               {[0, 1, 2].map((d) => (
                 <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--color-text-muted)]" style={{ animationDelay: `${d * 0.18}s` }} />
               ))}
