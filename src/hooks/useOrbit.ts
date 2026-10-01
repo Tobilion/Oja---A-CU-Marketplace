@@ -39,24 +39,26 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
     // Place every avatar once. Chips sit on the outward side of the phone
     // so they never cover the chat text.
     const placeStatic = () => {
-      const { rx: crx, ry: cry, sizeScale: ss } = geomRef.current;
+      const { rx: crx, ry: cry } = geomRef.current;
       avatars.forEach((a, i) => {
         const el = items[i];
         if (!el) return;
         const angle = (i / Math.max(avatars.length, 1)) * Math.PI * 2 - Math.PI / 2;
         const x = Math.cos(angle) * crx;
         const y = Math.sin(angle) * cry;
-        const front = Math.sin(angle) > 0;
-        const px = Math.round(DEPTH_SIZE[a.depth] * a.scale * ss);
-        el.style.transform = `translate3d(${x.toFixed(0)}px, ${y.toFixed(0)}px, 0)`;
-        el.style.opacity = "1";
-        el.style.zIndex = front ? "30" : "5";
+        const s = Math.sin(angle);
+        const focus = 1 + 0.16 * s;
+        el.style.transform = `translate3d(${x.toFixed(0)}px, ${y.toFixed(0)}px, 0) scale(${focus.toFixed(3)})`;
+        el.style.opacity = (0.45 + 0.55 * ((s + 1) / 2)).toFixed(2);
+        el.style.zIndex = s > 0 ? "30" : "5";
         const chip = chips[i];
         if (chip) {
           const hyp = Math.hypot(x, y) || 1;
+          const px = DEPTH_SIZE[a.depth] * a.scale * geomRef.current.sizeScale;
           const dist = px / 2 + 15;
-          chip.style.transform = `translate(-50%, -50%) translate(${(x / hyp * dist).toFixed(0)}px, ${(y / hyp * dist).toFixed(0)}px)`;
-          chip.style.opacity = front ? "1" : "0";
+          const fade = Math.min(1, Math.max(0, (s + 0.05) / 0.45));
+          chip.style.transform = `translate(-50%, -50%) translate(${(x / hyp * dist).toFixed(0)}px, ${(y / hyp * dist).toFixed(0)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
+          chip.style.opacity = fade.toFixed(2);
         }
       });
     };
@@ -127,27 +129,30 @@ export function useOrbit({ rootRef, phoneRef, itemRefs, chipRefs, avatars, pause
         if (!el || !a) continue;
         const angle = (phases[i] ?? 0) + (elapsed / a.orbitSeconds) * Math.PI * 2;
         const s = Math.sin(angle);
-        const front = s > 0;
-        // Independent bob so avatars feel alive. Transform only.
+        // Continuous depth: the avatar gradually grows as it swings round
+        // to the front middle and shrinks as it goes behind, instead of
+        // snapping between two sizes at the sides.
         const bob = Math.sin(elapsed * (0.9 + (i % 5) * 0.18) + i * 1.7) * 4;
         const depthShift = a.depth === 3 ? 1 : a.depth === 2 ? 0.6 : 0.35;
         const x = Math.cos(angle) * crx + smoothPX * 12 * depthShift;
         const y = Math.sin(angle) * cry + bob + smoothPY * 8 * depthShift;
         const px = DEPTH_SIZE[a.depth] * a.scale * ss;
-        const focus = front ? 1.05 : 0.93;
+        const focus = 1 + 0.16 * s;
         el.style.transform =
           `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${focus.toFixed(3)})`;
-        el.style.opacity = front ? "1" : "0.55";
-        el.style.zIndex = front ? "30" : "5";
+        el.style.opacity = (0.45 + 0.55 * ((s + 1) / 2)).toFixed(2);
+        el.style.zIndex = s > 0 ? "30" : "5";
         const chip = chips[i];
         if (chip) {
           // Outward side: push the chip away from the phone center along
           // the radial direction, so it never covers the chat text.
+          // The chip fades (never snaps) in step with the avatar shrinking.
           const hyp = Math.hypot(x, y) || 1;
           const dist = px / 2 + 15;
+          const fade = Math.min(1, Math.max(0, (s + 0.05) / 0.45));
           chip.style.transform =
-            `translate(-50%, -50%) translate(${(x / hyp * dist).toFixed(1)}px, ${(y / hyp * dist).toFixed(1)}px)`;
-          chip.style.opacity = front ? "1" : "0";
+            `translate(-50%, -50%) translate(${(x / hyp * dist).toFixed(1)}px, ${(y / hyp * dist).toFixed(1)}px) scale(${(0.8 + 0.2 * fade).toFixed(2)})`;
+          chip.style.opacity = fade.toFixed(2);
         }
       }
       const phone = phoneRef.current;

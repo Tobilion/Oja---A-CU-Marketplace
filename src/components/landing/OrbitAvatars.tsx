@@ -88,7 +88,7 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
   if (!enabled) return null;
 
   return (
-    <div ref={rootRef} aria-hidden="true" className="absolute inset-0 pointer-events-none hidden md:block">
+    <div ref={rootRef} aria-hidden="true" className="pointer-events-none absolute inset-0 hidden md:block">
       {avatars.map((a, i) => {
         const px = Math.round(depthSize(a.depth) * a.scale * sizeScale);
         const eager = a.depth === 3;
@@ -98,7 +98,11 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
             ref={(el) => {
               itemRefs.current[i] = el;
             }}
-            className="absolute left-1/2 top-1/2 h-0 w-0 will-change-transform"
+            // Sized box centered on the orbit point via negative margins, so
+            // the image is plain in-flow content (the pattern that provably
+            // paints). The loop only writes translate3d + scale on this box.
+            className="absolute left-1/2 top-1/2 will-change-transform"
+            style={{ width: px, height: px, marginLeft: -px / 2, marginTop: -px / 2 }}
           >
             <img
               src={a.src}
@@ -108,14 +112,8 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
               decoding="async"
               loading={eager ? "eager" : "lazy"}
               draggable={false}
-              className="absolute rounded-full object-cover bg-[var(--color-surface)] shadow-[0_10px_22px_rgba(0,0,0,0.20)]"
-              style={{
-                width: px,
-                height: px,
-                left: -px / 2,
-                top: -px / 2,
-                filter: a.depth === 1 ? "blur(1px)" : undefined,
-              }}
+              className="block h-full w-full rounded-full bg-[var(--color-surface)] object-cover shadow-[0_10px_22px_rgba(0,0,0,0.20)]"
+              style={{ filter: a.depth === 1 ? "blur(1px)" : undefined }}
             />
             {a.chip && (
               <div
@@ -125,7 +123,7 @@ export const OrbitAvatars: React.FC<OrbitAvatarsProps> = ({ phoneRef, paused, co
                 // Tubelight-pill styling from the portfolio nav: frosted
                 // pill, tiny type, soft shadow. Position is written every
                 // frame by the orbit loop (outward side of the avatar).
-                className="absolute left-0 top-0 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-md px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--color-text-main)] shadow-md will-change-transform"
+                className="absolute left-1/2 top-1/2 whitespace-nowrap rounded-full border border-[var(--color-border)] bg-[var(--color-surface)]/90 px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--color-text-main)] shadow-md backdrop-blur-md will-change-transform"
                 style={{ opacity: 0 }}
               >
                 {a.chip}
