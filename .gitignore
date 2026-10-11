@@ -10,3 +10,6 @@ oja-dev.log
 !.env.example
 .handoff/
 *.local
+
+# Local Project Console chat memory (not for git)
+.console/
