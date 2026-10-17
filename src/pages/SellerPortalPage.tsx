@@ -467,7 +467,7 @@ export const SellerPortalPage: React.FC = () => {
 
                         {(tab === 'done' || tab === 'cancelled') && (
                           <button
-                            onClick={() => onViewOrder(order)}
+                            onClick={() => handleViewOrder(order)}
                             className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)]"
                           >
                             View Details

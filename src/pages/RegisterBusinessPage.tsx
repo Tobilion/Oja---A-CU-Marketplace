@@ -20,7 +20,7 @@ import { useSmartBack } from '../routes/useSmartBack';
 export const RegisterBusinessPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
-  const handleClose = useSmartBack(paths.seller);
+  const handleClose = useSmartBack(paths.home);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [name, setName] = useState('');

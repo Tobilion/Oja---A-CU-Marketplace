@@ -171,6 +171,7 @@ function AppContent() {
         onOpenChat={() => navigate(paths.messages)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenCreateListing={() => navigate(paths.sell)}
+        onOpenSellerApply={() => navigate(paths.sellerApply)}
         onOpenProfile={(uid) => {
           const target = allUsers.find((u) => u.id === (uid || currentUser?.id));
           if (target) navigate(paths.profile(target.username));
