@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -12,10 +12,8 @@ import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/layout/Navbar';
 import { AppRoutes } from './routes/AppRoutes';
 import { useScrollRestoration } from './hooks/useScrollRestoration';
-import { ProductDetailModal } from './components/marketplace/ProductDetailModal';
-import { BusinessStorefrontModal } from './components/business/BusinessStorefrontModal';
+import { paths } from './routes/paths';
 import { CreateBusinessModal } from './components/business/CreateBusinessModal';
-import { ProfileModal } from './components/profile/ProfileModal';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { CheckoutModal } from './components/checkout/CheckoutModal';
 import { OrderDetailModal } from './components/orders/OrderDetailModal';
@@ -38,6 +36,7 @@ import { installGlobalFeedbackCapture, logUserAction } from './utils/feedback';
 
 function AppContent() {
   const { currentUser, allUsers, refreshUser, isLoading } = useAuth();
+  const navigate = useNavigate();
   const [feedbackContext, setFeedbackContext] = useState<string | null>(null);
   // Captured at mount: supabase-js strips the session hash from the URL shortly
   // after processing it, so this is read once before any re-render.
@@ -97,9 +96,6 @@ function AppContent() {
   const [connectivityError, setConnectivityError] = useState(false);
 
   // Active Modals & Drawers
-  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
-  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
-  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -164,9 +160,6 @@ function AppContent() {
   // modal and drawer so no signed-in view lingers for a guest.
   useEffect(() => {
     const closeAllOverlays = () => {
-      setSelectedListing(null);
-      setSelectedProfileUserId(null);
-      setSelectedBusinessId(null);
       setSelectedOrder(null);
       setIsCartOpen(false);
       setIsCheckoutOpen(false);
@@ -192,24 +185,12 @@ function AppContent() {
     sellerMap[u.id] = u;
   }
 
-  const selectedProfileUser = selectedProfileUserId
-    ? allUsers.find((u) => u.id === selectedProfileUserId) || null
-    : null;
-
-  const selectedBusiness = selectedBusinessId
-    ? businesses.find((b) => b.id === selectedBusinessId) || null
-    : null;
-
   const userBusinesses = businesses.filter((b) => b.ownerId === currentUser?.id);
 
   const handleOpenChatWithUser = (targetId: string, refOrder?: Order) => {
     setChatTargetUserId(targetId);
     setChatReferencedOrder(refOrder);
     setIsChatOpen(true);
-  };
-
-  const handleOpenStorefront = (bizId: string) => {
-    setSelectedBusinessId(bizId);
   };
 
   return (
@@ -237,7 +218,10 @@ function AppContent() {
         }}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenCreateListing={() => setIsCreateListingOpen(true)}
-        onOpenProfile={(uid) => setSelectedProfileUserId(uid || currentUser?.id || null)}
+        onOpenProfile={(uid) => {
+          const target = allUsers.find((u) => u.id === (uid || currentUser?.id));
+          if (target) navigate(paths.profile(target.username));
+        }}
         onOpenAdmin={() => setIsAdminOpen(true)}
         onOpenSellerApply={() => setIsSellerApplyOpen(true)}
         onOpenRecycleBin={() => setIsRecycleBinOpen(true)}
@@ -274,71 +258,13 @@ function AppContent() {
         listings={listings}
         categories={categories}
         halls={halls}
-        businesses={businesses}
         allUsers={allUsers}
-        onSelectListing={(listing) => setSelectedListing(listing)}
         onOpenCreateListing={() => setIsCreateListingOpen(true)}
         onOpenSellerApply={() => setIsSellerApplyOpen(true)}
+        onOpenChatWith={handleOpenChatWithUser}
       />
 
       {/* MODALS & DRAWERS */}
-      {selectedListing && (
-        <ProductDetailModal
-          listing={selectedListing}
-          seller={sellerMap[selectedListing.sellerId]}
-          business={businesses.find((b) => b.id === selectedListing.businessId)}
-          onClose={() => setSelectedListing(null)}
-          onOpenProfile={(uid) => {
-            setSelectedListing(null);
-            setSelectedProfileUserId(uid);
-          }}
-          onOpenStorefront={(bizId) => {
-            setSelectedListing(null);
-            setSelectedBusinessId(bizId);
-          }}
-          onOpenChatWith={(targetId) => {
-            setSelectedListing(null);
-            handleOpenChatWithUser(targetId);
-          }}
-        />
-      )}
-
-      {selectedProfileUser && (
-        <ProfileModal
-          user={selectedProfileUser}
-          listings={listings}
-          onClose={() => setSelectedProfileUserId(null)}
-          onOpenChatWith={(uid) => {
-            setSelectedProfileUserId(null);
-            handleOpenChatWithUser(uid);
-          }}
-          onSelectListing={(item) => {
-            setSelectedProfileUserId(null);
-            setSelectedListing(item);
-          }}
-          onOpenSellerApply={() => {
-            setSelectedProfileUserId(null);
-            setIsSellerApplyOpen(true);
-          }}
-        />
-      )}
-
-      {selectedBusiness && (
-        <BusinessStorefrontModal
-          business={selectedBusiness}
-          listings={listings}
-          sellerMap={sellerMap}
-          onClose={() => setSelectedBusinessId(null)}
-          onSelectListing={(item) => {
-            setSelectedBusinessId(null);
-            setSelectedListing(item);
-          }}
-          onUpdate={(updated) =>
-            setBusinesses((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
-          }
-        />
-      )}
-
       <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}

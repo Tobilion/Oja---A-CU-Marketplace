@@ -3,34 +3,106 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { X, Search, ShieldCheck, Heart, Users, MapPin, Mail, Phone } from 'lucide-react';
-import { Business, Listing, UserProfile } from '../../types';
-import { ListingCard } from '../marketplace/ListingCard';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { X, Search, ShieldCheck, Heart, Phone } from 'lucide-react';
+import { Business, Listing, UserProfile } from '../types';
+import { ListingCard } from '../components/marketplace/ListingCard';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { RouteFallback } from '../components/common/RouteFallback';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface BusinessStorefrontModalProps {
+export const StorePage: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const { allUsers } = useAuth();
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+
+    (async () => {
+      const [found, all] = await Promise.all([
+        id ? repo.getBusinessById(id) : Promise.resolve(null),
+        repo.getListings(false),
+      ]);
+      if (cancelled) return;
+      setBusiness(found);
+      setListings(all);
+      setLoadState(found ? 'ready' : 'missing');
+    })().catch((e) => {
+      console.error('Failed to load storefront', e);
+      if (!cancelled) setLoadState('missing');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  if (loadState === 'loading') {
+    return <RouteFallback />;
+  }
+
+  if (!business) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="font-mono text-xs tracking-widest uppercase text-[var(--color-text-muted)]">
+          Storefront unavailable
+        </p>
+        <h1 className="font-display font-extrabold text-2xl text-[var(--color-text-main)]">
+          This storefront could not be found.
+        </h1>
+        <p className="text-sm text-[var(--color-text-muted)] max-w-md">
+          The shop may have been removed, or the link may be mistyped.
+        </p>
+        <Link
+          to={paths.home}
+          className="px-4 py-2 rounded-xl bg-[var(--color-brand-primary)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          Browse the marketplace
+        </Link>
+      </div>
+    );
+  }
+
+  const sellerMap: Record<string, UserProfile> = {};
+  for (const u of allUsers) {
+    sellerMap[u.id] = u;
+  }
+
+  return (
+    <StorefrontContent
+      business={business}
+      listings={listings}
+      sellerMap={sellerMap}
+      onUpdate={setBusiness}
+    />
+  );
+};
+
+interface StorefrontContentProps {
   business: Business;
   listings: Listing[];
   sellerMap: Record<string, UserProfile>;
-  onClose: () => void;
-  onSelectListing: (listing: Listing) => void;
-  onUpdate?: (business: Business) => void;
+  onUpdate: (business: Business) => void;
 }
 
-export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = ({
+const StorefrontContent: React.FC<StorefrontContentProps> = ({
   business,
   listings,
   sellerMap,
-  onClose,
-  onSelectListing,
   onUpdate,
 }) => {
+  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.home);
 
   const [activeTab, setActiveTab] = useState<'home' | 'products' | 'reviews' | 'about' | 'manage'>('home');
   const [shopQuery, setShopQuery] = useState('');
@@ -38,7 +110,6 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
     currentUser ? business.followerIds.includes(currentUser.id) : false
   );
   const [followerCount, setFollowerCount] = useState(business.followerIds.length);
-  const modalRef = useModalEscape(true, onClose);
 
   const shopListings = listings.filter(
     (l) => (l.businessId === business.id || l.sellerId === business.ownerId) && l.status === 'active'
@@ -70,7 +141,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
 
   const refreshBusiness = async () => {
     const fresh = await repo.getBusinessById(business.id);
-    if (fresh) onUpdate?.(fresh);
+    if (fresh) onUpdate(fresh);
   };
 
   const handleJoinAction = async (action: 'request' | 'approve' | 'decline', userId?: string) => {
@@ -125,8 +196,8 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
   const displayName = (id: string) => sellerMap[id]?.fullName || `Student ${id.slice(0, 6)}`;
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative mx-auto w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Banner */}
         <div className="relative h-44 sm:h-52 w-full bg-neutral-900 overflow-hidden">
           <img
@@ -135,7 +206,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
             className="w-full h-full object-cover opacity-80"
           />
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
             aria-label="Close storefront"
           >
@@ -212,7 +283,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
         </div>
 
         {/* Tab Content */}
-        <div className="overflow-y-auto p-6 flex-1">
+        <div className="p-6 flex-1">
           {/* HOME / PRODUCTS */}
           {(activeTab === 'home' || activeTab === 'products') && (
             <div className="space-y-6">
@@ -234,7 +305,7 @@ export const BusinessStorefrontModal: React.FC<BusinessStorefrontModalProps> = (
                       key={item.id}
                       listing={item}
                       seller={sellerMap[item.sellerId]}
-                      onClick={() => onSelectListing(item)}
+                      onClick={() => navigate(paths.listing(item.id))}
                     />
                   ))}
                 </div>

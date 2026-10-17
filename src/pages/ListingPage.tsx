@@ -4,51 +4,46 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   X,
   ShoppingBag,
   ShieldCheck,
-  Star,
-  MapPin,
-  Clock,
   Flag,
-  Share2,
   ChevronLeft,
   ChevronRight,
   MessageSquare,
 } from 'lucide-react';
-import { Listing, UserProfile, Review, Business } from '../../types';
-import { formatNaira } from '../../utils/money';
-import { formatHallName } from '../../utils/formatHall';
-import { useCart } from '../../context/CartContext';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
+import { Listing, UserProfile, Review, Business } from '../types';
+import { formatNaira } from '../utils/money';
+import { formatHallName } from '../utils/formatHall';
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { ListingImagePlaceholder } from '../components/common/ListingImagePlaceholder';
+import { RouteFallback } from '../components/common/RouteFallback';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface ProductDetailModalProps {
-  listing: Listing;
-  seller?: UserProfile;
-  business?: Business;
-  onClose: () => void;
-  onOpenProfile: (userId: string) => void;
-  onOpenStorefront?: (businessId: string) => void;
+interface ListingPageProps {
+  // Opens the global chat drawer, which is still an overlay until the
+  // messaging page ships; this prop disappears once chat becomes a route.
   onOpenChatWith: (targetUserId: string) => void;
 }
 
-export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
-  listing,
-  seller,
-  business,
-  onClose,
-  onOpenProfile,
-  onOpenStorefront,
-  onOpenChatWith,
-}) => {
+export const ListingPage: React.FC<ListingPageProps> = ({ onOpenChatWith }) => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { addToCart } = useCart();
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.home);
+
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [seller, setSeller] = useState<UserProfile | undefined>(undefined);
+  const [business, setBusiness] = useState<Business | undefined>(undefined);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing'>('loading');
 
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -57,12 +52,71 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [reportReason, setReportReason] = useState('Academic dishonesty / Exam fraud');
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
-  const modalRef = useModalEscape(true, onClose);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    setActiveImageIdx(0);
+    setQuantity(1);
+    setReviews([]);
+
+    (async () => {
+      const found = id ? await repo.getListingById(id) : null;
+      if (cancelled) return;
+      if (!found) {
+        setLoadState('missing');
+        return;
+      }
+      const [sellerProfile, biz] = await Promise.all([
+        repo.getUserById(found.sellerId),
+        found.businessId ? repo.getBusinessById(found.businessId) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      setListing(found);
+      setSeller(sellerProfile || undefined);
+      setBusiness(biz || undefined);
+      setLoadState('ready');
+    })().catch((e) => {
+      console.error('Failed to load listing', e);
+      if (!cancelled) setLoadState('missing');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!listing) return;
     repo.getReviewsForListing(listing.id).then(setReviews);
     repo.incrementListingViews(listing.id);
-  }, [listing.id]);
+  }, [listing]);
+
+  if (loadState === 'loading') {
+    return <RouteFallback />;
+  }
+
+  if (loadState === 'missing' || !listing) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="font-mono text-xs tracking-widest uppercase text-[var(--color-text-muted)]">
+          Listing unavailable
+        </p>
+        <h1 className="font-display font-extrabold text-2xl text-[var(--color-text-main)]">
+          This listing is no longer available.
+        </h1>
+        <p className="text-sm text-[var(--color-text-muted)] max-w-md">
+          It may have been sold or removed, or the link may be mistyped.
+        </p>
+        <Link
+          to={paths.home}
+          className="px-4 py-2 rounded-xl bg-[var(--color-brand-primary)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          Browse the marketplace
+        </Link>
+      </div>
+    );
+  }
 
   const isOutOfStock = listing.stock <= 0;
   const isVerified = seller?.badges.includes('Verified Seller');
@@ -96,8 +150,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative mx-auto w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] font-medium">
@@ -125,17 +179,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <span className="hidden sm:inline">Report</span>
             </button>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] rounded-lg transition-colors"
-              aria-label="Close modal"
+              aria-label="Close listing"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Modal Body: Gallery Left + Contiguous Purchase Module Right */}
-        <div className="overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Body: Gallery Left + Contiguous Purchase Module Right */}
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Gallery Column */}
           <div className="space-y-4">
             <div className="relative aspect-4/3 w-full bg-[var(--color-surface-subtle)] rounded-xl overflow-hidden border border-[var(--color-border)]">
@@ -189,7 +243,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             {/* Seller Micro Card */}
             <div className="p-4 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between">
               <div
-                onClick={() => seller && onOpenProfile(seller.id)}
+                onClick={() => seller && navigate(paths.profile(seller.username))}
                 className="flex items-center gap-3 cursor-pointer group"
               >
                 <img
@@ -223,9 +277,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <MessageSquare className="w-4 h-4" />
                   </button>
                 )}
-                {business && onOpenStorefront && (
+                {business && (
                   <button
-                    onClick={() => onOpenStorefront(business.id)}
+                    onClick={() => navigate(paths.store(business.id))}
                     className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-brand-primary)] text-white hover:opacity-90 transition-opacity"
                   >
                     Storefront
