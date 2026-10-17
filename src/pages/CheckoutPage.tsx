@@ -3,34 +3,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { X, Check, ShieldCheck, AlertTriangle, ArrowRight, ArrowLeft, Lock, Building, CreditCard } from 'lucide-react';
-import { Hall, PaymentMode, Order } from '../../types';
-import { useCart } from '../../context/CartContext';
-import { useAuth } from '../../context/AuthContext';
-import { formatNaira } from '../../utils/money';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { X, AlertTriangle, ArrowRight, ArrowLeft, Lock, ShoppingBag } from 'lucide-react';
+import { Hall, PaymentMode } from '../types';
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
+import { formatNaira } from '../utils/money';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface CheckoutModalProps {
-  halls: Hall[];
-  onClose: () => void;
-  onOrderSuccess: (order: Order) => void;
-}
-
-export const CheckoutModal: React.FC<CheckoutModalProps> = ({
-  halls,
-  onClose,
-  onOrderSuccess,
-}) => {
-  const { cart, deliveryMode, setDeliveryMode, itemsSubtotal, feeBreakdownResult, finalTotalAmount, clearCart } = useCart();
+/**
+ * Full-page checkout. The three-step flow (destination, payment, review) is
+ * the same as the modal it replaces; placing an order lands on the order page.
+ */
+export const CheckoutPage: React.FC = () => {
+  const navigate = useNavigate();
+  const handleClose = useSmartBack(paths.home);
+  const { cart, deliveryMode, setDeliveryMode, feeBreakdownResult, finalTotalAmount, clearCart } = useCart();
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
 
+  const [halls, setHalls] = useState<Hall[]>([]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [hallId, setHallId] = useState(currentUser?.hallId || halls[0]?.id || 'hall_peter');
+  const [hallId, setHallId] = useState(currentUser?.hallId || '');
   const [roomNumber, setRoomNumber] = useState(currentUser?.roomNumber || '');
+  const [placed, setPlaced] = useState(false);
+
+  useEffect(() => {
+    repo.getHalls().then(setHalls).catch(() => setHalls([]));
+  }, []);
+
+  // Halls arrive asynchronously; preselect one once they load.
+  useEffect(() => {
+    if (!hallId && halls.length > 0) {
+      setHallId(halls[0].id);
+    }
+  }, [halls, hallId]);
   const [deliveryNotes, setDeliveryNotes] = useState('');
 
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('pay_oja');
@@ -41,13 +53,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [transferReference, setTransferReference] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const modalRef = useModalEscape(true, onClose);
 
   const activeHall = halls.find((h) => h.id === hallId);
 
   const handleStep1Next = () => {
     if (!roomNumber.trim()) {
       setErrorMsg('Please specify your room number for delivery.');
+      return;
+    }
+    // Submitting against a missing hall list used to die silently on the
+    // database foreign key; fail loudly instead.
+    if (halls.length === 0 || !halls.some((h) => h.id === hallId)) {
+      setErrorMsg('Hall list failed to load. Check your connection and try again.');
       return;
     }
     setErrorMsg(null);
@@ -90,10 +107,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         );
       }
 
+      // The empty-cart state is suppressed until the route change lands so
+      // the cleared cart never flashes the empty panel.
+      setPlaced(true);
       clearCart();
       showToast(`Order ${order.orderNumber} placed successfully!`, 'success');
-      onOrderSuccess(order);
-      onClose();
+      requestMarketplaceRefresh();
+      navigate(paths.order(order.id), { replace: true });
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to place order');
     } finally {
@@ -101,9 +121,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   };
 
+  if (cart.length === 0 && !placed) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+        <div className="mx-auto w-full max-w-xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl px-6 py-16 flex flex-col items-center text-center gap-3">
+          <div className="p-4 rounded-full bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)]">
+            <ShoppingBag className="w-8 h-8" />
+          </div>
+          <p className="text-sm font-semibold text-[var(--color-text-main)]">Your cart is empty</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Add items before checking out.</p>
+          <Link
+            to={paths.home}
+            className="mt-1 px-4 py-2 rounded-xl bg-[var(--color-brand-primary)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            Browse the marketplace
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-xl mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div>
@@ -116,7 +156,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <span className={step === 3 ? 'text-[var(--color-brand-primary)] font-bold' : ''}>3. Review</span>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>

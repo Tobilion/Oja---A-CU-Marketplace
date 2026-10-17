@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   X,
   ShoppingBag,
@@ -23,22 +23,27 @@ import { repo } from '../data';
 import { useNotifications } from '../context/NotificationContext';
 import { ListingImagePlaceholder } from '../components/common/ListingImagePlaceholder';
 import { RouteFallback } from '../components/common/RouteFallback';
-import { paths } from '../routes/paths';
+import { paths, withNext } from '../routes/paths';
 import { useSmartBack } from '../routes/useSmartBack';
 
-interface ListingPageProps {
-  // Opens the global chat drawer, which is still an overlay until the
-  // messaging page ships; this prop disappears once chat becomes a route.
-  onOpenChatWith: (targetUserId: string) => void;
-}
-
-export const ListingPage: React.FC<ListingPageProps> = ({ onOpenChatWith }) => {
+export const ListingPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { addToCart } = useCart();
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
   const handleClose = useSmartBack(paths.home);
+
+  // Chat is account-gated: guests are sent through /login and returned here.
+  const handleOpenChatWith = async (targetUserId: string) => {
+    if (!currentUser) {
+      navigate(withNext(paths.login, location.pathname));
+      return;
+    }
+    const thread = await repo.ensureThread(currentUser.id, targetUserId);
+    navigate(paths.messageThread(thread.id));
+  };
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [seller, setSeller] = useState<UserProfile | undefined>(undefined);
@@ -269,7 +274,7 @@ export const ListingPage: React.FC<ListingPageProps> = ({ onOpenChatWith }) => {
               <div className="flex items-center gap-2">
                 {seller && (
                   <button
-                    onClick={() => onOpenChatWith(seller.id)}
+                    onClick={() => handleOpenChatWith(seller.id)}
                     className="p-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-main)] hover:bg-[var(--color-border)] transition-colors"
                     title="Send direct message"
                     aria-label="Chat with seller"

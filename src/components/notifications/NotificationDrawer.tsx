@@ -12,13 +12,13 @@ import { useModalEscape } from '../../hooks/useModalEscape';
 interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateToOrder?: (orderId: string) => void;
+  onNavigate?: (notification: AppNotification) => void;
 }
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   isOpen,
   onClose,
-  onNavigateToOrder,
+  onNavigate,
 }) => {
   const { notifications, markAsRead } = useNotifications();
   const modalRef = useModalEscape(isOpen, onClose);
@@ -57,9 +57,9 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                 key={n.id}
                 onClick={() => {
                   if (!n.read) markAsRead(n.id);
-                  if (n.linkId && onNavigateToOrder) {
+                  if (n.linkId && onNavigate) {
                     onClose();
-                    onNavigateToOrder(n.linkId);
+                    onNavigate(n);
                   }
                 }}
                 className={`p-3.5 rounded-xl border transition-all cursor-pointer ${

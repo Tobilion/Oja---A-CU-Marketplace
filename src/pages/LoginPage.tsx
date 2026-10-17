@@ -3,24 +3,52 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
-import { X, Lock, Mail, ShieldCheck, AlertCircle, Key, Check } from 'lucide-react';
-import { Hall, Gender } from '../../types';
-import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationContext';
-import { IS_DEMO_MODE } from '../../config/appConfig';
-import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { OtpInput } from './OtpInput';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { X, ShieldCheck, AlertCircle, Key, Check } from 'lucide-react';
+import { Hall, Gender } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import { IS_DEMO_MODE } from '../config/appConfig';
+import { isValidNigerianPhone, normalizeNigerianPhone } from '../utils/phone';
+import { repo } from '../data';
+import { OtpInput } from '../components/auth/OtpInput';
+import { paths } from '../routes/paths';
+import { safeNext } from '../routes/safeNext';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface AuthModalProps {
-  halls: Hall[];
-  onClose: () => void;
-}
+/**
+ * Sign-in / sign-up / verification as a route. The card is the same form
+ * that used to be a global modal; after success it returns to the path the
+ * guard captured in ?next= (guests bounced away from a protected page).
+ */
+export const LoginPage: React.FC = () => {
+  const [halls, setHalls] = useState<Hall[]>([]);
 
-export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
+  useEffect(() => {
+    repo.getHalls().then(setHalls).catch(() => setHalls([]));
+  }, []);
+
+  return <AuthForm halls={halls} />;
+};
+
+const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
   const { signInWithGoogleSchool, signInWithEmailPassword, signUp, verifyEmailCode, isMock } = useAuth();
   const { showToast } = useNotifications();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const rawNext = searchParams.get('next');
+  const nextPath = rawNext ? safeNext(rawNext) : null;
+
+  const handleCancel = useSmartBack(paths.home);
+  const handleAuthenticated = useCallback(() => {
+    if (nextPath) {
+      navigate(nextPath, { replace: true });
+      return;
+    }
+    handleCancel();
+  }, [nextPath, navigate, handleCancel]);
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'verify' | 'success'>('signin');
   const [schoolEmail, setSchoolEmail] = useState('');
@@ -44,7 +72,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const modalRef = useModalEscape(true, onClose);
 
   const handleGoogleSchoolSignIn = async () => {
     setErrorMsg(null);
@@ -56,7 +83,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     try {
       await signInWithGoogleSchool(schoolEmail.trim(), fullName.trim() || 'CU Student');
       showToast('Signed in with CU School Account', 'success');
-      onClose();
+      handleAuthenticated();
     } catch (err: any) {
       setErrorMsg(err.message || 'Google School sign-in failed');
     } finally {
@@ -75,7 +102,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     try {
       await signInWithEmailPassword(personalEmail.trim() || schoolEmail.trim());
       showToast('Signed in successfully', 'success');
-      onClose();
+      handleAuthenticated();
     } catch (err: any) {
       setErrorMsg(err.message || 'Sign in failed');
     } finally {
@@ -168,22 +195,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     }
   };
 
-  // Let the success confirmation breathe briefly before dismissing the modal.
+  // Let the success confirmation breathe briefly before leaving the page.
   useEffect(() => {
     if (mode !== 'success') return;
-    const timer = setTimeout(onClose, 1400);
+    const timer = setTimeout(handleAuthenticated, 1400);
     return () => clearTimeout(timer);
-  }, [mode, onClose]);
+  }, [mode, handleAuthenticated]);
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="flex items-center justify-center px-3 py-10 sm:px-6">
+      <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <h2 className="text-base font-bold text-[var(--color-text-main)]">
             {mode === 'signin' ? 'Sign In to Oja' : mode === 'signup' ? 'Create Student Account' : mode === 'success' ? 'Welcome to Oja' : 'Verify Email Code'}
           </h2>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleCancel} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>

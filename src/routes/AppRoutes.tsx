@@ -10,6 +10,12 @@ import { NotFoundPage } from '../pages/NotFoundPage';
 import { ListingPage } from '../pages/ListingPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { StorePage } from '../pages/StorePage';
+import { OrdersPage } from '../pages/OrdersPage';
+import { OrderDetailPage } from '../pages/OrderDetailPage';
+import { CheckoutPage } from '../pages/CheckoutPage';
+import { MessagesPage } from '../pages/MessagesPage';
+import { LoginPage } from '../pages/LoginPage';
+import { RequireAccess } from './guards';
 import { Category, Hall, Listing, UserProfile } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { paths, routePatterns } from './paths';
@@ -21,14 +27,13 @@ export interface AppRoutesProps {
   allUsers: UserProfile[];
   onOpenCreateListing: () => void;
   onOpenSellerApply: () => void;
-  // Temporary: opens the global chat drawer until the messaging route ships.
-  onOpenChatWith: (targetUserId: string) => void;
 }
 
 /**
- * The route table. Public browsing routes are wired here; transactional and
- * portal routes are added in later phases while the remaining modals stay
- * mounted in App.tsx until they are converted.
+ * The route table. Public browsing routes sit at the top; account-gated
+ * routes wrap their page in RequireAccess (login redirect or 403). Portal
+ * routes are added in later phases while the remaining modals stay mounted
+ * in App.tsx until they are converted.
  */
 export const AppRoutes: React.FC<AppRoutesProps> = ({
   listings,
@@ -37,7 +42,6 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
   allUsers,
   onOpenCreateListing,
   onOpenSellerApply,
-  onOpenChatWith,
 }) => {
   useDocumentTitle();
   const navigate = useNavigate();
@@ -58,12 +62,53 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
           />
         }
       />
-      <Route path={routePatterns.listing} element={<ListingPage onOpenChatWith={onOpenChatWith} />} />
+      <Route path={routePatterns.listing} element={<ListingPage />} />
       <Route path={routePatterns.store} element={<StorePage />} />
       <Route
         path={routePatterns.profile}
-        element={<ProfilePage onOpenChatWith={onOpenChatWith} onOpenSellerApply={onOpenSellerApply} />}
+        element={<ProfilePage onOpenSellerApply={onOpenSellerApply} />}
       />
+      <Route
+        path={routePatterns.orders}
+        element={
+          <RequireAccess requirement="signed-in">
+            <OrdersPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.order}
+        element={
+          <RequireAccess requirement="signed-in">
+            <OrderDetailPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.checkout}
+        element={
+          <RequireAccess requirement="signed-in">
+            <CheckoutPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.messages}
+        element={
+          <RequireAccess requirement="signed-in">
+            <MessagesPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.messageThread}
+        element={
+          <RequireAccess requirement="signed-in">
+            <MessagesPage />
+          </RequireAccess>
+        }
+      />
+      <Route path={routePatterns.login} element={<LoginPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

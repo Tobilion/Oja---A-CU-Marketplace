@@ -3,44 +3,39 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import {
-  X,
-  CheckCircle2,
-  Clock,
-  ShieldCheck,
-  AlertTriangle,
-  Truck,
-  Key,
-  Star,
-  MapPin,
-  Building,
-} from 'lucide-react';
-import { Order, SubOrder, OrderState, UserProfile } from '../../types';
-import { formatNaira } from '../../utils/money';
-import { formatHallName } from '../../utils/formatHall';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { X, Key, Star } from 'lucide-react';
+import { Order, SubOrder, OrderState, UserProfile } from '../types';
+import { formatNaira } from '../utils/money';
+import { formatHallName } from '../utils/formatHall';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { ReviewModal } from '../components/marketplace/ReviewModal';
+import { RouteFallback } from '../components/common/RouteFallback';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface OrderDetailModalProps {
-  order: Order;
-  onClose: () => void;
-  onOrderUpdated: () => void;
-  onOpenReviewModal?: (listingId: string, subOrderId: string, orderId: string, agentId?: string) => void;
-  people?: Record<string, UserProfile>;
-}
-
-export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
-  order,
-  onClose,
-  onOrderUpdated,
-  onOpenReviewModal,
-  people = {},
-}) => {
-  const { currentUser } = useAuth();
+/**
+ * Full-page order detail. The card used to be a modal opened from the cart
+ * drawer; the lifecycle actions, handover code, and dispute flow are
+ * unchanged.
+ */
+export const OrderDetailPage: React.FC = () => {
+  const { orderId } = useParams<{ orderId: string }>();
+  const { currentUser, allUsers } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.orders);
+
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing'>('loading');
+  const [reviewTarget, setReviewTarget] = useState<{
+    listingId: string;
+    subOrderId: string;
+    agentId?: string;
+  } | null>(null);
 
   const [deliveryCodeInput, setDeliveryCodeInput] = useState('');
   const [selectedSubOrderId, setSelectedSubOrderId] = useState<string | null>(null);
@@ -48,10 +43,65 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
-  const modalRef = useModalEscape(true, onClose);
+
+  const people: Record<string, UserProfile> = {};
+  for (const u of allUsers) {
+    people[u.id] = u;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    (async () => {
+      const found = orderId ? await repo.getOrderById(orderId) : null;
+      if (cancelled) return;
+      setOrder(found);
+      setLoadState(found ? 'ready' : 'missing');
+    })().catch((e) => {
+      console.error('Failed to load order', e);
+      if (!cancelled) setLoadState('missing');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  const refreshOrder = useCallback(async () => {
+    requestMarketplaceRefresh();
+    if (!orderId) return;
+    const found = await repo.getOrderById(orderId);
+    if (found) setOrder(found);
+  }, [orderId]);
+
+  if (loadState === 'loading') {
+    return <RouteFallback />;
+  }
+
+  // Orders are readable only by their buyer under row-level security, so a
+  // shared or mistyped link lands here even when the order still exists.
+  if (loadState === 'missing' || !order) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="font-mono text-xs tracking-widest uppercase text-[var(--color-text-muted)]">
+          Order unavailable
+        </p>
+        <h1 className="font-display font-extrabold text-2xl text-[var(--color-text-main)]">
+          We couldn't load this order.
+        </h1>
+        <p className="text-sm text-[var(--color-text-muted)] max-w-md">
+          The link may be mistyped, or this order belongs to another account.
+        </p>
+        <Link
+          to={paths.orders}
+          className="px-4 py-2 rounded-xl bg-[var(--color-brand-primary)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          View your orders
+        </Link>
+      </div>
+    );
+  }
 
   const isBuyer = currentUser?.id === order.buyerId;
-  const isSuperAdmin = currentUser?.adminLevel === 'super_admin' || currentUser?.badges.includes('Admin');
 
   // Order lifecycle states for timeline visualization
   const orderedStates: OrderState[] = [
@@ -71,7 +121,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     try {
       await repo.sellerAcceptSubOrder(order.id, subOrderId, 24, currentUser?.id);
       showToast('Sub-order accepted. Delivery window starts.', 'success');
-      onOrderUpdated();
+      await refreshOrder();
     } catch (err: any) {
       showToast(err?.message || 'Failed to accept sub-order', 'error');
     } finally {
@@ -84,7 +134,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     try {
       await repo.advanceOrderStatus(order.id, subOrderId, next, note, currentUser?.id);
       showToast(`Status updated to ${next.replace(/_/g, ' ')}`, 'info');
-      onOrderUpdated();
+      await refreshOrder();
     } catch (err: any) {
       showToast(err?.message || 'Failed to update status', 'error');
     } finally {
@@ -106,7 +156,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         showToast('Delivery handover verified successfully!', 'success');
         setSelectedSubOrderId(null);
         setDeliveryCodeInput('');
-        onOrderUpdated();
+        await refreshOrder();
       } else {
         showToast('Delivery code mismatch', 'error');
       }
@@ -122,7 +172,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     try {
       await repo.confirmBuyerReceipt(order.id, subOrderId);
       showToast('Order confirmed completed! Seller payout queued.', 'success');
-      onOrderUpdated();
+      await refreshOrder();
     } catch (err: any) {
       showToast(err?.message || 'Failed to confirm receipt', 'error');
     } finally {
@@ -136,7 +186,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     try {
       await repo.cancelOrder(order.id, 'Cancelled by buyer before payment confirmation');
       showToast('Order cancelled.', 'info');
-      onOrderUpdated();
+      await refreshOrder();
     } catch (err: any) {
       showToast(err?.message || 'Failed to cancel order', 'error');
     } finally {
@@ -155,7 +205,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
       showToast('Dispute opened. Funds stay held until a moderator decides.', 'info');
       setShowDisputeForm(false);
       setDisputeReason('');
-      onOrderUpdated();
+      await refreshOrder();
     } catch (err: any) {
       showToast(err?.message || 'Failed to open dispute', 'error');
     } finally {
@@ -188,8 +238,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-2xl mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div>
@@ -203,7 +253,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               Destination: {formatHallName(order.deliveryHallId)} · Room {order.deliveryRoom}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -346,9 +396,15 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     )}
 
                     {/* Buyer Review */}
-                    {isBuyer && sub.status === 'completed' && onOpenReviewModal && (
+                    {isBuyer && sub.status === 'completed' && (
                       <button
-                        onClick={() => onOpenReviewModal(sub.items[0]?.listingId, sub.id, order.id, sub.agentId)}
+                        onClick={() =>
+                          setReviewTarget({
+                            listingId: sub.items[0]?.listingId,
+                            subOrderId: sub.id,
+                            agentId: sub.agentId,
+                          })
+                        }
                         className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-main)] hover:bg-[var(--color-surface)] flex items-center gap-1"
                       >
                         <Star className="w-3.5 h-3.5 text-amber-500" />
@@ -499,6 +555,17 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {reviewTarget && (
+        <ReviewModal
+          listingId={reviewTarget.listingId}
+          subOrderId={reviewTarget.subOrderId}
+          orderId={order.id}
+          agentId={reviewTarget.agentId}
+          onClose={() => setReviewTarget(null)}
+          onSubmitted={refreshOrder}
+        />
+      )}
     </div>
   );
 };

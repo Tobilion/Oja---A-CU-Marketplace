@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   X,
   ShieldCheck,
@@ -23,17 +23,16 @@ import { useAuth } from '../context/AuthContext';
 import { repo } from '../data';
 import { useNotifications } from '../context/NotificationContext';
 import { RouteFallback } from '../components/common/RouteFallback';
-import { paths } from '../routes/paths';
+import { paths, withNext } from '../routes/paths';
 import { useSmartBack } from '../routes/useSmartBack';
 
 interface ProfilePageProps {
-  // Temporary wiring while chat and the seller-application form are still
-  // overlays in App.tsx; both become routes in later phases.
-  onOpenChatWith: (userId: string) => void;
+  // Temporary wiring while the seller-application form is still an overlay
+  // in App.tsx; it becomes a route in a later phase.
   onOpenSellerApply: () => void;
 }
 
-export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenChatWith, onOpenSellerApply }) => {
+export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSellerApply }) => {
   const { username } = useParams<{ username: string }>();
   const { currentUser } = useAuth();
   const [fetchedUser, setFetchedUser] = useState<UserProfile | null>(null);
@@ -98,7 +97,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenChatWith, onOpen
     <ProfileContent
       user={profileUser}
       listings={listings}
-      onOpenChatWith={onOpenChatWith}
       onOpenSellerApply={onOpenSellerApply}
     />
   );
@@ -107,20 +105,29 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenChatWith, onOpen
 interface ProfileContentProps {
   user: UserProfile;
   listings: Listing[];
-  onOpenChatWith: (userId: string) => void;
   onOpenSellerApply: () => void;
 }
 
 const ProfileContent: React.FC<ProfileContentProps> = ({
   user,
   listings,
-  onOpenChatWith,
   onOpenSellerApply,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser, updateProfile } = useAuth();
   const { showToast } = useNotifications();
   const handleClose = useSmartBack(paths.home);
+
+  // Chat is account-gated: guests are sent through /login and returned here.
+  const handleOpenChatWith = async (targetUserId: string) => {
+    if (!currentUser) {
+      navigate(withNext(paths.login, location.pathname));
+      return;
+    }
+    const thread = await repo.ensureThread(currentUser.id, targetUserId);
+    navigate(paths.messageThread(thread.id));
+  };
 
   const isSelf = currentUser?.id === user.id;
   const userListings = listings.filter((l) => l.sellerId === user.id && l.status === 'active');
@@ -223,7 +230,7 @@ const ProfileContent: React.FC<ProfileContentProps> = ({
                   {!isSelf ? (
                     <>
                       <button
-                        onClick={() => onOpenChatWith(user.id)}
+                        onClick={() => handleOpenChatWith(user.id)}
                         className="px-4 py-1.5 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold flex items-center gap-1.5 hover:opacity-90"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
