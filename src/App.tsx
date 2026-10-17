@@ -30,13 +30,18 @@ import { ReviewModal } from './components/marketplace/ReviewModal';
 import { Footer } from './components/layout/Footer';
 import { Listing, Category, Hall, Business, Order, UserProfile } from './types';
 import { repo, isSupabaseConfigMissing } from './data';
-import { AlertOctagon, Terminal, MessageCircle } from 'lucide-react';
+import { AlertOctagon, Terminal, MessageCircle, LoaderCircle } from 'lucide-react';
 import { FeedbackModal } from './components/feedback/FeedbackModal';
 import { installGlobalFeedbackCapture, logUserAction } from './utils/feedback';
 
 function AppContent() {
-  const { currentUser, allUsers, refreshUser } = useAuth();
+  const { currentUser, allUsers, refreshUser, isLoading } = useAuth();
   const [feedbackContext, setFeedbackContext] = useState<string | null>(null);
+  // Captured at mount: supabase-js strips the session hash from the URL shortly
+  // after processing it, so this is read once before any re-render.
+  const [returningFromAuthLink] = useState(() =>
+    /(?:^|[#&])access_token=/.test(window.location.hash)
+  );
 
   useEffect(() => {
     installGlobalFeedbackCapture();
@@ -205,6 +210,20 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-base)] text-[var(--color-text-main)] transition-colors">
+      {returningFromAuthLink && isLoading && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[var(--color-bg-base)]">
+          <div className="font-display font-extrabold text-3xl tracking-tight text-[var(--color-text-main)]">
+            <span className="text-[var(--color-brand-primary)]">Oja</span>
+            <span className="text-sm font-mono font-normal tracking-normal text-[var(--color-text-muted)] ml-1.5">
+              Covenant
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+            <span>Signing you in…</span>
+          </div>
+        </div>
+      )}
       <Navbar
         onOpenCart={() => setIsCartOpen(true)}
         onOpenChat={() => {
