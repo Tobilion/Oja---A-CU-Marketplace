@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Lock, Mail, ShieldCheck, AlertCircle, Key, Check } from 'lucide-react';
 import { Hall, Gender } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { IS_DEMO_MODE } from '../../config/appConfig';
 import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
 import { useModalEscape } from '../../hooks/useModalEscape';
+import { OtpInput } from './OtpInput';
 
 interface AuthModalProps {
   halls: Hall[];
@@ -21,7 +22,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
   const { signInWithGoogleSchool, signInWithEmailPassword, signUp, verifyEmailCode, isMock } = useAuth();
   const { showToast } = useNotifications();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'verify'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'verify' | 'success'>('signin');
   const [schoolEmail, setSchoolEmail] = useState('');
   const [personalEmail, setPersonalEmail] = useState('');
   const [fullName, setFullName] = useState('');
@@ -136,7 +137,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
 
       // Advance to email verification
       setMode('verify');
-      showToast('Account created! Please verify your email with the 6-digit code.', 'info');
+      showToast('Account created! Please verify your email with the code we sent.', 'info');
     } catch (err: any) {
       setErrorMsg(err.message || 'Sign up failed');
     } finally {
@@ -152,7 +153,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
       const ok = await verifyEmailCode(verificationCode.trim());
       if (ok) {
         showToast('Email verified! You now have full access.', 'success');
-        onClose();
+        setMode('success');
       } else {
         setErrorMsg(
           IS_DEMO_MODE
@@ -167,13 +168,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     }
   };
 
+  // Let the success confirmation breathe briefly before dismissing the modal.
+  useEffect(() => {
+    if (mode !== 'success') return;
+    const timer = setTimeout(onClose, 1400);
+    return () => clearTimeout(timer);
+  }, [mode, onClose]);
+
   return (
     <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <h2 className="text-base font-bold text-[var(--color-text-main)]">
-            {mode === 'signin' ? 'Sign In to Oja' : mode === 'signup' ? 'Create Student Account' : 'Verify Email Code'}
+            {mode === 'signin' ? 'Sign In to Oja' : mode === 'signup' ? 'Create Student Account' : mode === 'success' ? 'Welcome to Oja' : 'Verify Email Code'}
           </h2>
           <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
@@ -456,7 +464,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
             </form>
           )}
 
-          {/* MODE: VERIFY 6-DIGIT CODE */}
+          {/* MODE: VERIFY EMAIL CODE */}
           {mode === 'verify' && (
             <form onSubmit={handleVerifyCode} className="space-y-4">
               <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
@@ -465,34 +473,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
                   <span>Email Verification Code</span>
                 </p>
                 <p className="text-[11px] opacity-80 mt-1">
-                  A 6-digit confirmation code has been dispatched. {IS_DEMO_MODE && isMock && '(Demo Code: 123456)'}
+                  A confirmation code has been dispatched to your email. {IS_DEMO_MODE && isMock && '(Demo Code: 123456)'}
                 </p>
               </div>
 
-              <div>
-                <label className="block text-[var(--color-text-muted)] mb-1 font-medium text-center">
-                  Enter 6-Digit Code
-                </label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder={IS_DEMO_MODE ? '123456' : '······'}
-                  className="w-full max-w-xs mx-auto block bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-xl p-3 text-center font-mono text-xl font-bold tracking-widest text-[var(--color-text-main)]"
-                />
-              </div>
+              <OtpInput
+                value={verificationCode}
+                onChange={setVerificationCode}
+                disabled={isSubmitting}
+                autoFocus
+              />
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="submit"
-                  disabled={verificationCode.length !== 6 || isSubmitting}
+                  disabled={verificationCode.length < 6 || isSubmitting}
                   className="w-full py-2.5 bg-[var(--color-brand-primary)] text-white font-bold rounded-xl hover:opacity-90 disabled:opacity-50"
                 >
                   Verify & Finish Setup
                 </button>
               </div>
             </form>
+          )}
+
+          {/* MODE: SUCCESS CONFIRMATION */}
+          {mode === 'success' && (
+            <div className="flex flex-col items-center justify-center py-10 text-center space-y-3">
+              <div className="w-16 h-16 rounded-full bg-[var(--color-brand-primary)]/10 border border-[var(--color-brand-primary)]/20 flex items-center justify-center">
+                <Check className="w-8 h-8 text-[var(--color-brand-primary)]" />
+              </div>
+              <h3 className="text-lg font-bold text-[var(--color-text-main)]">You're in!</h3>
+              <p className="text-xs text-[var(--color-text-muted)]">Your email is verified. Welcome to Oja.</p>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-3 py-1 text-[11px] text-[var(--color-text-muted)]">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Email verified
+              </span>
+            </div>
           )}
         </div>
       </div>
