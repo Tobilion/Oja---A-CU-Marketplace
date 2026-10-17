@@ -33,6 +33,31 @@ import {
   FeedbackStatus,
 } from '../types';
 
+// Registrations awaiting email confirmation are stashed locally: with
+// confirmation enabled there is no session at signup time, so RLS denies the
+// profile insert until the OTP establishes one (see signUp/verifyEmailCode).
+const PENDING_SIGNUP_KEY = 'oja:pending_signup';
+// Matches the Supabase email OTP lifetime (default 1 hour); past this the
+// stash is treated as dead and the flow restarts from sign-up.
+const PENDING_SIGNUP_TTL_MS = 60 * 60 * 1000;
+
+interface PendingSignup {
+  email: string;
+  userId: string;
+  createdAt: string;
+  fullName: string;
+  username: string;
+  personalEmail: string;
+  hallId: string;
+  roomNumber: string;
+  gender: 'male' | 'female';
+  telegramHandle: string;
+  phoneNumber: string;
+  matricNumber: string;
+  sellerApplicationStatus: 'none' | 'pending';
+  bankDetails?: BankDetails;
+}
+
 export class SupabaseRepository implements Repository {
   readonly isMock = false;
   private client: SupabaseClient;
@@ -44,7 +69,12 @@ export class SupabaseRepository implements Repository {
   // --- Auth & Profiles ---
   async getCurrentUser(): Promise<UserProfile | null> {
     const { data: { user }, error: authError } = await this.client.auth.getUser();
-    if (authError || !user) return null;
+    if (authError || !user) {
+      // A signup awaiting email confirmation has no session yet; serve the
+      // stashed registration so the verify step has an account to complete.
+      const pending = this.readPendingSignup();
+      return pending ? this.buildPendingProfile(pending) : null;
+    }
     let profile = await this.getOwnProfile(user.id);
     if (!profile) {
       // First login (e.g. Google OAuth return): no trigger creates the row
@@ -85,19 +115,24 @@ export class SupabaseRepository implements Repository {
     // Defense in depth alongside the Auth Hook: never materialize a profile
     // for an out-of-domain, non-founding Google identity.
     if (!isStu && !isFounding) return null;
-    const metaName =
-      (authUser.user_metadata && (authUser.user_metadata.full_name || authUser.user_metadata.name)) || '';
-    const baseUsername = (email.split('@')[0] || 'student').replace(/[^a-zA-Z0-9_]/g, '_');
+    const meta = (authUser.user_metadata || {}) as Record<string, any>;
+    const metaName = meta.full_name || meta.name || '';
+    const metaUsername =
+      typeof meta.username === 'string' ? meta.username.replace(/[^a-zA-Z0-9_]/g, '_') : '';
+    const baseUsername =
+      metaUsername || (email.split('@')[0] || 'student').replace(/[^a-zA-Z0-9_]/g, '_');
     const row = {
       id: authUser.id,
       full_name: metaName || 'CU Student',
       username: baseUsername,
-      school_email: isStu ? email : email,
-      personal_email: isStu ? null : email,
-      hall_id: null,
-      room_number: '',
-      gender: 'male',
-      telegram_handle: '',
+      school_email: email,
+      personal_email: isStu ? meta.personal_email || null : email,
+      hall_id: meta.hall_id || null,
+      room_number: meta.room_number || '',
+      gender: meta.gender === 'female' ? 'female' : 'male',
+      telegram_handle: meta.telegram_handle || '',
+      phone_number: meta.phone_number || '',
+      matric_number: meta.matric_number || null,
     };
     let { data, error } = await this.client.from('profiles').insert(row).select().single();
     if (error && (error as any).code === '23505') {
@@ -107,6 +142,88 @@ export class SupabaseRepository implements Repository {
     }
     if (error || !data) return null;
     return this.mapProfile(data);
+  }
+
+  private readPendingSignup(): PendingSignup | null {
+    try {
+      const raw = localStorage.getItem(PENDING_SIGNUP_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as PendingSignup;
+      if (!parsed || typeof parsed.email !== 'string' || typeof parsed.createdAt !== 'string') {
+        return null;
+      }
+      if (Date.now() - Date.parse(parsed.createdAt) > PENDING_SIGNUP_TTL_MS) {
+        this.clearPendingSignup();
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private writePendingSignup(pending: PendingSignup): void {
+    try {
+      localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify(pending));
+    } catch {
+      // Storage unavailable: verification falls back to rebuilding the
+      // profile from the auth user metadata.
+    }
+  }
+
+  private clearPendingSignup(): void {
+    try {
+      localStorage.removeItem(PENDING_SIGNUP_KEY);
+    } catch {
+      // Nothing to clear when storage is unavailable.
+    }
+  }
+
+  private profileRowFromSignup(pending: PendingSignup, id: string) {
+    return {
+      id,
+      full_name: pending.fullName || 'Student',
+      username: (pending.username || pending.email.split('@')[0]).replace(/[^a-zA-Z0-9_]/g, '_'),
+      school_email: pending.email,
+      personal_email: pending.personalEmail || null,
+      hall_id: pending.hallId || null,
+      room_number: pending.roomNumber || '',
+      gender: pending.gender,
+      telegram_handle: pending.telegramHandle,
+      phone_number: pending.phoneNumber,
+      matric_number: pending.matricNumber || null,
+      bank_details: pending.bankDetails ?? null,
+      seller_application_status: pending.sellerApplicationStatus,
+      seller_application_date:
+        pending.sellerApplicationStatus === 'pending' ? new Date().toISOString() : null,
+    };
+  }
+
+  private buildPendingProfile(pending: PendingSignup): UserProfile {
+    return {
+      id: pending.userId,
+      fullName: pending.fullName || 'Student',
+      username: pending.username,
+      personalEmail: pending.personalEmail,
+      schoolEmail: pending.email,
+      isSchoolEmailVerified: false,
+      isPersonalEmailVerified: false,
+      hallId: pending.hallId,
+      roomNumber: pending.roomNumber,
+      gender: pending.gender,
+      telegramHandle: pending.telegramHandle,
+      phoneNumber: pending.phoneNumber,
+      matricNumber: pending.matricNumber,
+      badges: ['Member'],
+      adminLevel: null,
+      bankDetails: pending.bankDetails,
+      isSellerApproved: false,
+      sellerApplicationStatus: pending.sellerApplicationStatus,
+      isSuspended: false,
+      ratingAverage: 5.0,
+      ratingCount: 0,
+      createdAt: pending.createdAt,
+    };
   }
 
   async switchUser(userId: string): Promise<UserProfile | null> {
@@ -247,14 +364,38 @@ export class SupabaseRepository implements Repository {
   }
 
   async verifyEmailCode(userId: string, code: string): Promise<boolean> {
-    const user = await this.getUserById(userId);
-    if (!user) return false;
-    const { error } = await this.client.auth.verifyOtp({
-      email: user.schoolEmail || user.personalEmail,
+    const pending = this.readPendingSignup();
+    // Pending signups have no profile row yet, so the auth email comes from
+    // the stash; otherwise resolve it from the existing profile.
+    let email = pending?.email;
+    if (!email) {
+      const user = await this.getUserById(userId);
+      if (!user) return false;
+      email = user.schoolEmail || user.personalEmail;
+    }
+    const { data, error } = await this.client.auth.verifyOtp({
+      email,
       token: code,
       type: 'signup',
     });
-    return !error;
+    if (error) return false;
+    this.clearPendingSignup();
+    if (!pending) return true;
+
+    // First session for this account: write the deferred profile row, now
+    // authorized by the freshly verified session.
+    const verifiedUser = data.user;
+    if (!verifiedUser) return true;
+    const { error: profileError } = await this.client
+      .from('profiles')
+      .insert(this.profileRowFromSignup(pending, verifiedUser.id));
+    if (profileError && !(await this.getOwnProfile(verifiedUser.id))) {
+      // Insert rejected (e.g. the chosen username was taken while the code
+      // was pending): rebuild a minimal profile from the auth metadata so
+      // the account is still usable.
+      await this.createProfileFromAuthUser(verifiedUser as any);
+    }
+    return true;
   }
 
   async signInWithGoogleSchool(schoolEmail: string, fullName: string): Promise<UserProfile> {
@@ -288,44 +429,65 @@ export class SupabaseRepository implements Repository {
     if (!cleanEmail.endsWith('@stu.cu.edu.ng') && cleanEmail !== 'tobilobajagun@gmail.com') {
       throw new Error('Covenant University student email must end in @stu.cu.edu.ng');
     }
+    const pending: PendingSignup = {
+      email: cleanEmail,
+      userId: '',
+      createdAt: new Date().toISOString(),
+      fullName: (data.fullName || '').trim(),
+      username: (data.username || '').trim(),
+      personalEmail: (data.personalEmail || '').trim().toLowerCase(),
+      hallId: data.hallId || '',
+      roomNumber: (data.roomNumber || '').trim(),
+      gender: data.gender === 'female' ? 'female' : 'male',
+      telegramHandle: (data.telegramHandle || '').trim(),
+      phoneNumber: (data.phoneNumber || '').replace(/[\s-]/g, ''),
+      matricNumber: (data.matricNumber || '').trim(),
+      sellerApplicationStatus: data.sellerApplicationStatus === 'pending' ? 'pending' : 'none',
+      bankDetails: data.bankDetails,
+    };
     const { data: authData, error } = await this.client.auth.signUp({
       email: cleanEmail,
       password: 'OjaSchoolSecureAuth2026!',
       options: {
         data: {
-          full_name: data.fullName,
-          username: data.username,
-          hall_id: data.hallId,
-          room_number: data.roomNumber,
-          gender: data.gender,
-          telegram_handle: data.telegramHandle,
+          full_name: pending.fullName,
+          username: pending.username,
+          hall_id: pending.hallId,
+          room_number: pending.roomNumber,
+          gender: pending.gender,
+          telegram_handle: pending.telegramHandle,
+          phone_number: pending.phoneNumber,
+          matric_number: pending.matricNumber,
+          personal_email: pending.personalEmail,
         },
       },
     });
     if (error) throw error;
     if (!authData.user) throw new Error('Failed to register user account.');
-    // No trigger creates the profile row (triggers on auth.users need the
-    // dashboard Auth Hook), so insert it explicitly. RLS profiles_insert_own
-    // scopes the row to the new user's id.
-    const { error: profileError } = await this.client.from('profiles').insert({
-      id: authData.user.id,
-      full_name: data.fullName || 'Student',
-      username: data.username || cleanEmail.split('@')[0],
-      school_email: cleanEmail,
-      personal_email: (data.personalEmail || '').trim().toLowerCase() || null,
-      hall_id: data.hallId,
-      room_number: data.roomNumber || '',
-      gender: data.gender || 'male',
-      telegram_handle: (data.telegramHandle || '').trim(),
-      phone_number: (data.phoneNumber || '').replace(/[\s-]/g, ''),
-      matric_number: (data.matricNumber || '').trim() || null,
-    });
-    if (profileError) throw profileError;
-    const profile = await this.getUserById(authData.user.id);
-    return profile || (await this.getCurrentUser())!;
+    pending.userId = authData.user.id;
+
+    if (authData.session) {
+      // Email confirmation disabled: the session authorizes the insert now.
+      const { error: profileError } = await this.client
+        .from('profiles')
+        .insert(this.profileRowFromSignup(pending, authData.user.id));
+      if (profileError) throw profileError;
+      const profile = await this.getUserById(authData.user.id);
+      if (!profile) throw new Error('Account created, but the profile could not be loaded. Try signing in.');
+      return profile;
+    }
+
+    // Email confirmation enabled: no session yet, so RLS denies the profile
+    // insert. Stash the registration and let verifyEmailCode write the row
+    // once the OTP establishes a session.
+    this.writePendingSignup(pending);
+    return this.buildPendingProfile(pending);
   }
 
   async signOut(): Promise<void> {
+    // Drop any half-finished registration so it cannot revive as a signed-in
+    // provisional profile after signing out.
+    this.clearPendingSignup();
     await this.client.auth.signOut();
   }
 
