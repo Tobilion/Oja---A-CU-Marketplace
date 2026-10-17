@@ -264,6 +264,16 @@ export class SupabaseRepository implements Repository {
     return this.mapPublicProfile(pub);
   }
 
+  async getUserByUsername(username: string): Promise<UserProfile | null> {
+    // Profile links resolve by username; mirrors getUserById's fallback so a
+    // visitor can open any profile through the public view under RLS.
+    const { data, error } = await this.client.from('profiles').select('*').eq('username', username).maybeSingle();
+    if (!error && data) return this.mapProfile(data);
+    const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*').eq('username', username).maybeSingle();
+    if (pubError || !pub) return null;
+    return this.mapPublicProfile(pub);
+  }
+
   async updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
     // B-04: Only permit non-privileged columns in user self-updates.
     // Bank details are the seller's own payout data, so self-update is allowed.
@@ -884,6 +894,17 @@ export class SupabaseRepository implements Repository {
     return fullOrders;
   }
 
+  async getOrderById(orderId: string): Promise<Order | null> {
+    // Orders are readable by the buyer only (RLS orders_buyer_read). The
+    // sub_orders policy also admits participants and admins, but the parent
+    // order row is required to assemble a full order, so in public mode this
+    // returns null for sellers, agents, and admins who are not the buyer.
+    // Deep links to /orders/:id are therefore currently scoped to the buyer
+    // (a broader read policy is a deliberate future schema decision, not a
+    // client fix). Demo mode has no such limit.
+    return this.fetchFullOrder(orderId);
+  }
+
   async getAllOrders(): Promise<Order[]> {
     const { data: orders, error } = await this.client.from('orders').select('id').order('created_at', { ascending: false });
     if (error) throw error;
@@ -999,6 +1020,12 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from('chat_threads').select('*').contains('participant_ids', [userId]);
     if (error) throw error;
     return (data || []).map(this.mapThread);
+  }
+
+  async getThreadById(threadId: string): Promise<ChatThread | null> {
+    const { data, error } = await this.client.from('chat_threads').select('*').eq('id', threadId).maybeSingle();
+    if (error || !data) return null;
+    return this.mapThread(data);
   }
 
   // Direction-free 1:1 thread: both sides converge on thread_<min>_<max>.

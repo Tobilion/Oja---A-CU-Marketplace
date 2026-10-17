@@ -66,6 +66,11 @@ export class MockRepository implements Repository {
     return users.find((u) => u.id === id) || null;
   }
 
+  async getUserByUsername(username: string): Promise<UserProfile | null> {
+    const users = MockStorage.getUsers();
+    return users.find((u) => u.username === username) || null;
+  }
+
   async updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
     const users = MockStorage.getUsers();
     const idx = users.findIndex((u) => u.id === id);
@@ -1251,6 +1256,10 @@ export class MockRepository implements Repository {
     );
   }
 
+  async getOrderById(orderId: string): Promise<Order | null> {
+    return MockStorage.getOrders().find((o) => o.id === orderId) || null;
+  }
+
   async getAllOrders(): Promise<Order[]> {
     return MockStorage.getOrders();
   }
@@ -1445,6 +1454,10 @@ export class MockRepository implements Repository {
   async getThreadsForUser(userId: string): Promise<ChatThread[]> {
     const threads = MockStorage.getThreads();
     return threads.filter((t) => t.participantIds.includes(userId));
+  }
+
+  async getThreadById(threadId: string): Promise<ChatThread | null> {
+    return MockStorage.getThreads().find((t) => t.id === threadId) || null;
   }
 
   // Finds the 1:1 thread for a pair (either direction) or creates and
