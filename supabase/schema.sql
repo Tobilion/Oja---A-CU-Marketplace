@@ -825,7 +825,7 @@ INSERT INTO public.halls (id, name, gender, active) VALUES
 ('hall_paul', 'Paul Hall', 'male', true),
 ('hall_daniel', 'Daniel Hall', 'male', true),
 ('hall_john', 'John Hall', 'male', true),
-('hall_samuel', 'Samuel Hall', 'male', true),
+('hall_joshua', 'Joshua Hall', 'male', true),
 ('hall_mary', 'Mary Hall', 'female', true),
 ('hall_esther', 'Esther Hall', 'female', true),
 ('hall_dorcas', 'Dorcas Hall', 'female', true),

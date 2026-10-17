@@ -12,7 +12,7 @@ export const INITIAL_HALLS: Hall[] = [
   { id: 'hall_paul', name: 'Paul Hall', gender: 'male', active: true },
   { id: 'hall_daniel', name: 'Daniel Hall', gender: 'male', active: true },
   { id: 'hall_john', name: 'John Hall', gender: 'male', active: true },
-  { id: 'hall_samuel', name: 'Samuel Hall', gender: 'male', active: true },
+  { id: 'hall_joshua', name: 'Joshua Hall', gender: 'male', active: true },
 
   // Female Halls
   { id: 'hall_mary', name: 'Mary Hall', gender: 'female', active: true },
