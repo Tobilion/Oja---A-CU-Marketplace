@@ -21,7 +21,7 @@ import { useSmartBack } from '../routes/useSmartBack';
 export const RecycleBinPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
-  const handleClose = useSmartBack(paths.home);
+  const handleClose = useSmartBack(paths.seller);
 
   const [recycledListings, setRecycledListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);

@@ -16,6 +16,16 @@ export function safeNext(raw: string | null | undefined): string {
   if (!candidate.startsWith('/')) return '/';
   if (candidate.startsWith('//')) return '/';
   if (candidate.includes('\\')) return '/';
+  // One decoding round catches values that only expose "//" or a backslash
+  // after percent-decoding (e.g. "/%2F%2Fevil.com"). The original encoded
+  // value is returned so the router keeps matching it literally.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(candidate);
+  } catch {
+    return '/';
+  }
+  if (decoded.startsWith('//') || decoded.includes('\\')) return '/';
   return candidate;
 }
 

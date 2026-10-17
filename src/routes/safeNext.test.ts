@@ -72,6 +72,17 @@ export function runSafeNextTests(): { passed: number; total: number; logs: strin
     assert(safeNext('..\\..\\etc') === '/', 'parent traversal without slash should be rejected');
   });
 
+  test('rejects hostile values hidden by percent-encoding', () => {
+    assert(safeNext('/%2F%2Fevil.example.com') === '/', 'encoded // should be rejected');
+    assert(safeNext('/%5Cevil.example.com') === '/', 'encoded backslash should be rejected');
+    assert(safeNext('/messages%5C..%5C..') === '/', 'encoded embedded backslash should be rejected');
+    assert(safeNext('/%') === '/', 'malformed encoding should be rejected');
+    assert(
+      safeNext('/orders/a%2Fb') === '/orders/a%2Fb',
+      'ordinary encoded characters should still pass through unchanged'
+    );
+  });
+
   test('safeNextFromSearch decodes and validates a next parameter', () => {
     assert(safeNextFromSearch('?next=%2Fcheckout') === '/checkout', 'Encoded /checkout should decode');
     assert(

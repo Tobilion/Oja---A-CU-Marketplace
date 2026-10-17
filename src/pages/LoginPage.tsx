@@ -15,6 +15,7 @@ import { repo } from '../data';
 import { OtpInput } from '../components/auth/OtpInput';
 import { paths } from '../routes/paths';
 import { safeNext } from '../routes/safeNext';
+import { stashAuthNext, clearAuthNext } from '../routes/authReturn';
 import { useSmartBack } from '../routes/useSmartBack';
 
 /**
@@ -43,6 +44,7 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
 
   const handleCancel = useSmartBack(paths.home);
   const handleAuthenticated = useCallback(() => {
+    clearAuthNext();
     if (nextPath) {
       navigate(nextPath, { replace: true });
       return;
@@ -81,10 +83,14 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
     }
     setIsSubmitting(true);
     try {
+      // OAuth leaves the page entirely; remember the guarded route so the
+      // session-detection effect in App can finish the deep link afterwards.
+      if (nextPath) stashAuthNext(nextPath);
       await signInWithGoogleSchool(schoolEmail.trim(), fullName.trim() || 'CU Student');
       showToast('Signed in with CU School Account', 'success');
       handleAuthenticated();
     } catch (err: any) {
+      clearAuthNext();
       setErrorMsg(err.message || 'Google School sign-in failed');
     } finally {
       setIsSubmitting(false);

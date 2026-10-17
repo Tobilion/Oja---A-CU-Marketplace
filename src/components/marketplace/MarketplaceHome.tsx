@@ -12,7 +12,8 @@ import { AvatarRow, OrbitAvatars } from '../landing/OrbitAvatars';
 import { ChatSimulation } from '../landing/ChatSimulation';
 import { Listing, Category, Hall, UserProfile } from '../../types';
 import { FilterOptions, filterAndSearchListings } from '../../utils/search';
-import { Package, Plus, Sparkles } from 'lucide-react';
+import { Package } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 interface MarketplaceHomeProps {
@@ -21,8 +22,6 @@ interface MarketplaceHomeProps {
   halls: Hall[];
   allUsers: UserProfile[];
   onSelectListing: (listing: Listing) => void;
-  onOpenCreateListing: () => void;
-  onOpenSellerApply: () => void;
 }
 
 export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
@@ -31,8 +30,6 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
   halls,
   allUsers,
   onSelectListing,
-  onOpenCreateListing,
-  onOpenSellerApply,
 }) => {
   const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,6 +70,16 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
     setSearchQuery('');
     setFilters({ sortBy: 'newest' });
   };
+
+  const location = useLocation();
+
+  // The Navbar "Explore Market" link targets /#explore; once the home route is
+  // mounted (or the hash changes) scroll the listings grid into view.
+  useEffect(() => {
+    if (location.hash === '#explore') {
+      document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.hash]);
 
   // Hero phone tilt target for the orbit parallax loop.
   const phoneRef = useRef<HTMLDivElement | null>(null);

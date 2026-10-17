@@ -29,6 +29,7 @@ interface NavbarProps {
   onOpenCart: () => void;
   onOpenChat: () => void;
   onOpenNotifications: () => void;
+  onOpenExplore: () => void;
   onOpenCreateListing: () => void;
   onOpenProfile: (userId?: string) => void;
   onOpenAdmin: () => void;
@@ -45,6 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCart,
   onOpenChat,
   onOpenNotifications,
+  onOpenExplore,
   onOpenCreateListing,
   onOpenProfile,
   onOpenAdmin,
@@ -165,12 +167,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 2: Navigation Links (Clean unboxed text links) */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[var(--color-text-muted)]">
-          <a
-            href="#explore"
+          <button
+            onClick={onOpenExplore}
             className="hover:text-[var(--color-text-main)] transition-colors whitespace-nowrap"
           >
             Explore Market
-          </a>
+          </button>
           <button
             onClick={() => onOpenProfile(currentUser?.id)}
             className="hover:text-[var(--color-text-main)] transition-colors whitespace-nowrap"
@@ -354,15 +356,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       Register Business
                     </button>
-                    <button
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        onOpenRecycleBin();
-                      }}
-                      className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)]"
-                    >
-                      Recycle Bin
-                    </button>
+                    {(currentUser.isSellerApproved || currentUser.badges.includes('Business Owner')) && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onOpenRecycleBin();
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)]"
+                      >
+                        Recycle Bin
+                      </button>
+                    )}
                     {isAdmin && (
                       <button
                         onClick={() => {

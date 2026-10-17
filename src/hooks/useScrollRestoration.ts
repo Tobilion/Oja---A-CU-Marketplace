@@ -22,8 +22,11 @@ export function useScrollRestoration() {
       window.scrollTo(0, positions.current.get(location.key) ?? 0);
       return;
     }
+    // A hash navigation (e.g. /#explore) scrolls itself to the target element;
+    // forcing the top here would cancel that scroll.
+    if (location.hash) return;
     window.scrollTo(0, 0);
-  }, [location.key, navigationType]);
+  }, [location.key, navigationType, location.hash]);
 
   useEffect(() => {
     const key = location.key;

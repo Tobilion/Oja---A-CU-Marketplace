@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, CheckCircle2, XCircle, Truck, MessageSquare, Wallet } from 'lucide-react';
 import { Order, SubOrder, Business, BankDetails } from '../types';
@@ -59,8 +59,13 @@ export const SellerPortalPage: React.FC = () => {
     [businesses, currentUser]
   );
 
+  // Guards against a stale load (e.g. a fast persona switch) overwriting the
+  // rows of the request that finished last.
+  const loadSeq = useRef(0);
+
   const load = async () => {
     if (!currentUser) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     setLoadError(null);
     try {
@@ -69,6 +74,7 @@ export const SellerPortalPage: React.FC = () => {
         repo.getListings(false),
         repo.getBusinesses(),
       ]);
+      if (seq !== loadSeq.current) return;
       setBusinesses(allBusinesses);
       const mine: SellerRow[] = [];
       for (const order of orders) {
@@ -84,9 +90,10 @@ export const SellerPortalPage: React.FC = () => {
         currentUser.bankDetails || { bankName: '', accountNumber: '', accountName: currentUser.fullName }
       );
     } catch (e: any) {
+      if (seq !== loadSeq.current) return;
       setLoadError(e?.message || 'Failed to load your store.');
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 

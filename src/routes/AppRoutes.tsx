@@ -3,36 +3,50 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { lazy } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import { MarketplaceHome } from '../components/marketplace/MarketplaceHome';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { ListingPage } from '../pages/ListingPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { StorePage } from '../pages/StorePage';
-import { OrdersPage } from '../pages/OrdersPage';
-import { OrderDetailPage } from '../pages/OrderDetailPage';
-import { CheckoutPage } from '../pages/CheckoutPage';
-import { MessagesPage } from '../pages/MessagesPage';
 import { LoginPage } from '../pages/LoginPage';
-import { SellPage } from '../pages/SellPage';
-import { SellerApplyPage } from '../pages/SellerApplyPage';
-import { RegisterBusinessPage } from '../pages/RegisterBusinessPage';
-import { RecycleBinPage } from '../pages/RecycleBinPage';
-import { SellerPortalPage } from '../pages/SellerPortalPage';
-import { AgentPortalPage } from '../pages/AgentPortalPage';
-import { AdminPage } from '../pages/AdminPage';
 import { RequireAccess } from './guards';
 import { Category, Hall, Listing, UserProfile } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { paths, routePatterns } from './paths';
+
+// Secondary flows load on demand so the marketplace entry chunk stays small.
+// Each page is a named export, mapped to the default shape lazy() expects.
+const OrdersPage = lazy(() => import('../pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
+const OrderDetailPage = lazy(() =>
+  import('../pages/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage }))
+);
+const CheckoutPage = lazy(() => import('../pages/CheckoutPage').then((m) => ({ default: m.CheckoutPage })));
+const MessagesPage = lazy(() => import('../pages/MessagesPage').then((m) => ({ default: m.MessagesPage })));
+const SellPage = lazy(() => import('../pages/SellPage').then((m) => ({ default: m.SellPage })));
+const SellerApplyPage = lazy(() =>
+  import('../pages/SellerApplyPage').then((m) => ({ default: m.SellerApplyPage }))
+);
+const RegisterBusinessPage = lazy(() =>
+  import('../pages/RegisterBusinessPage').then((m) => ({ default: m.RegisterBusinessPage }))
+);
+const RecycleBinPage = lazy(() =>
+  import('../pages/RecycleBinPage').then((m) => ({ default: m.RecycleBinPage }))
+);
+const SellerPortalPage = lazy(() =>
+  import('../pages/SellerPortalPage').then((m) => ({ default: m.SellerPortalPage }))
+);
+const AgentPortalPage = lazy(() =>
+  import('../pages/AgentPortalPage').then((m) => ({ default: m.AgentPortalPage }))
+);
+const AdminPage = lazy(() => import('../pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 
 export interface AppRoutesProps {
   listings: Listing[];
   categories: Category[];
   halls: Hall[];
   allUsers: UserProfile[];
-  onOpenCreateListing: () => void;
   onOpenSellerApply: () => void;
 }
 
@@ -45,7 +59,6 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
   categories,
   halls,
   allUsers,
-  onOpenCreateListing,
   onOpenSellerApply,
 }) => {
   useDocumentTitle();
@@ -62,8 +75,6 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
             halls={halls}
             allUsers={allUsers}
             onSelectListing={(listing) => navigate(paths.listing(listing.id))}
-            onOpenCreateListing={onOpenCreateListing}
-            onOpenSellerApply={onOpenSellerApply}
           />
         }
       />
@@ -148,7 +159,7 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
       <Route
         path={routePatterns.recycleBin}
         element={
-          <RequireAccess requirement="signed-in">
+          <RequireAccess requirement="seller">
             <RecycleBinPage />
           </RequireAccess>
         }

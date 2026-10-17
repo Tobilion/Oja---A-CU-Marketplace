@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -11,8 +11,10 @@ import { CartProvider } from './context/CartContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/layout/Navbar';
 import { AppRoutes } from './routes/AppRoutes';
+import { RouteFallback } from './components/common/RouteFallback';
 import { useScrollRestoration } from './hooks/useScrollRestoration';
 import { paths, withNext } from './routes/paths';
+import { takeAuthNext } from './routes/authReturn';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
 import { Footer } from './components/layout/Footer';
@@ -139,16 +141,29 @@ function AppContent() {
   }, []);
 
   // BUG-1: logout from anywhere (Navbar menu, another tab) closes every open
-  // modal and drawer so no signed-in view lingers for a guest.
+  // modal and drawer so no signed-in view lingers for a guest, and returns to
+  // the marketplace because the route the guest was on may be protected.
   useEffect(() => {
     const closeAllOverlays = () => {
       setIsCartOpen(false);
       setIsNotificationsOpen(false);
       setFeedbackContext(null);
+      navigate(paths.home);
     };
     window.addEventListener('oja:logout', closeAllOverlays);
     return () => window.removeEventListener('oja:logout', closeAllOverlays);
-  }, []);
+  }, [navigate]);
+
+  // Google OAuth returns to the Site URL root with the session in the URL
+  // hash; LoginPage stashed the guarded deep link before leaving, so finish
+  // that navigation once the session is restored.
+  useEffect(() => {
+    if (!returningFromAuthLink || isLoading || !currentUser) return;
+    const target = takeAuthNext();
+    if (!target) return;
+    if (target === `${location.pathname}${location.search}`) return;
+    navigate(target, { replace: true });
+  }, [returningFromAuthLink, isLoading, currentUser, navigate, location.pathname, location.search]);
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-base)] text-[var(--color-text-main)] transition-colors">
@@ -170,6 +185,7 @@ function AppContent() {
         onOpenCart={() => setIsCartOpen(true)}
         onOpenChat={() => navigate(paths.messages)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
+        onOpenExplore={() => navigate(`${paths.home}#explore`)}
         onOpenCreateListing={() => navigate(paths.sell)}
         onOpenSellerApply={() => navigate(paths.sellerApply)}
         onOpenProfile={(uid) => {
@@ -207,14 +223,15 @@ function AppContent() {
         </div>
       )}
 
-      <AppRoutes
-        listings={listings}
-        categories={categories}
-        halls={halls}
-        allUsers={allUsers}
-        onOpenCreateListing={() => navigate(paths.sell)}
-        onOpenSellerApply={() => navigate(paths.sellerApply)}
-      />
+      <Suspense fallback={<RouteFallback />}>
+        <AppRoutes
+          listings={listings}
+          categories={categories}
+          halls={halls}
+          allUsers={allUsers}
+          onOpenSellerApply={() => navigate(paths.sellerApply)}
+        />
+      </Suspense>
 
       {/* MODALS & DRAWERS: cart and notifications stay overlays on every route. */}
       <CartDrawer
