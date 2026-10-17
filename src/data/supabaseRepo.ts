@@ -61,6 +61,10 @@ interface PendingSignup {
 export class SupabaseRepository implements Repository {
   readonly isMock = false;
   private client: SupabaseClient;
+  // True only while this page session is mid-signup (stash written by signUp,
+  // not yet verified). A cold page load must not resurrect the provisional
+  // profile as a fake signed-in state.
+  private pendingSignupInFlow = false;
 
   constructor(supabaseUrl: string, supabaseAnonKey: string) {
     this.client = createClient(supabaseUrl, supabaseAnonKey);
@@ -72,8 +76,9 @@ export class SupabaseRepository implements Repository {
     if (authError || !user) {
       // A signup awaiting email confirmation has no session yet; serve the
       // stashed registration so the verify step has an account to complete.
+      // Only within the same page session that started the signup.
       const pending = this.readPendingSignup();
-      return pending ? this.buildPendingProfile(pending) : null;
+      return pending && this.pendingSignupInFlow ? this.buildPendingProfile(pending) : null;
     }
     let profile = await this.getOwnProfile(user.id);
     if (!profile) {
@@ -380,6 +385,7 @@ export class SupabaseRepository implements Repository {
     });
     if (error) return false;
     this.clearPendingSignup();
+    this.pendingSignupInFlow = false;
     if (!pending) return true;
 
     // First session for this account: write the deferred profile row, now
@@ -481,6 +487,7 @@ export class SupabaseRepository implements Repository {
     // insert. Stash the registration and let verifyEmailCode write the row
     // once the OTP establishes a session.
     this.writePendingSignup(pending);
+    this.pendingSignupInFlow = true;
     return this.buildPendingProfile(pending);
   }
 
@@ -488,6 +495,7 @@ export class SupabaseRepository implements Repository {
     // Drop any half-finished registration so it cannot revive as a signed-in
     // provisional profile after signing out.
     this.clearPendingSignup();
+    this.pendingSignupInFlow = false;
     await this.client.auth.signOut();
   }
 
