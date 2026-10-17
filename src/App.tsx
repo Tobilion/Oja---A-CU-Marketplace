@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter, useNavigate } from 'react-router-dom';
+import { BrowserRouter, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -13,17 +13,10 @@ import { Navbar } from './components/layout/Navbar';
 import { AppRoutes } from './routes/AppRoutes';
 import { useScrollRestoration } from './hooks/useScrollRestoration';
 import { paths, withNext } from './routes/paths';
-import { CreateBusinessModal } from './components/business/CreateBusinessModal';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
-import { CreateListingModal } from './components/listings/CreateListingModal';
-import { SellerApplyModal } from './components/seller/SellerApplyModal';
-import { RecycleBinModal } from './components/seller/RecycleBinModal';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { SellerPortalModal } from './components/seller/SellerPortalModal';
-import { AgentPortalModal } from './components/delivery/AgentPortalModal';
 import { Footer } from './components/layout/Footer';
-import { Listing, Category, Hall, Business } from './types';
+import { Listing, Category, Hall } from './types';
 import { repo, isSupabaseConfigMissing } from './data';
 import { AlertOctagon, Terminal, MessageCircle, LoaderCircle } from 'lucide-react';
 import { FeedbackModal } from './components/feedback/FeedbackModal';
@@ -31,8 +24,9 @@ import { installGlobalFeedbackCapture, logUserAction } from './utils/feedback';
 import { MARKETPLACE_REFRESH_EVENT } from './utils/marketplaceRefresh';
 
 function AppContent() {
-  const { currentUser, allUsers, refreshUser, isLoading } = useAuth();
+  const { currentUser, allUsers, isLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [feedbackContext, setFeedbackContext] = useState<string | null>(null);
   // Captured at mount: supabase-js strips the session hash from the URL shortly
   // after processing it, so this is read once before any re-render.
@@ -45,6 +39,12 @@ function AppContent() {
   useEffect(() => {
     installGlobalFeedbackCapture();
   }, []);
+
+  // Feedback breadcrumbs record in-app route changes; BrowserRouter performs
+  // history pushes without hashchange events, so the location hook reports.
+  useEffect(() => {
+    logUserAction(`navigate ${location.pathname}`);
+  }, [location.pathname]);
 
   if (isSupabaseConfigMissing) {
     return (
@@ -85,35 +85,25 @@ function AppContent() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
-  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
   // Visible when the database is unreachable (DNS/filtered network), so an
   // empty marketplace is never mistaken for an empty database.
   const [connectivityError, setConnectivityError] = useState(false);
 
-  // Active Modals & Drawers
+  // Drawers that stay overlays on every route (cart, notifications).
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [isCreateListingOpen, setIsCreateListingOpen] = useState(false);
-  const [isCreateBusinessOpen, setIsCreateBusinessOpen] = useState(false);
-  const [isSellerApplyOpen, setIsSellerApplyOpen] = useState(false);
-  const [isRecycleBinOpen, setIsRecycleBinOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [isSellerPortalOpen, setIsSellerPortalOpen] = useState(false);
-  const [isAgentPortalOpen, setIsAgentPortalOpen] = useState(false);
 
   const loadMarketplaceData = useCallback(async () => {
     try {
-      const [l, c, h, b] = await Promise.all([
+      const [l, c, h] = await Promise.all([
         repo.getListings(false),
         repo.getCategories(),
         repo.getHalls(),
-        repo.getBusinesses(),
       ]);
       setListings(l);
       setCategories(c);
       setHalls(h);
-      setBusinesses(b);
       setConnectivityError(false);
     } catch (e) {
       console.error('Failed to load marketplace data', e);
@@ -154,20 +144,11 @@ function AppContent() {
     const closeAllOverlays = () => {
       setIsCartOpen(false);
       setIsNotificationsOpen(false);
-      setIsCreateListingOpen(false);
-      setIsCreateBusinessOpen(false);
-      setIsSellerApplyOpen(false);
-      setIsRecycleBinOpen(false);
-      setIsAdminOpen(false);
-      setIsSellerPortalOpen(false);
-      setIsAgentPortalOpen(false);
       setFeedbackContext(null);
     };
     window.addEventListener('oja:logout', closeAllOverlays);
     return () => window.removeEventListener('oja:logout', closeAllOverlays);
   }, []);
-
-  const userBusinesses = businesses.filter((b) => b.ownerId === currentUser?.id);
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-base)] text-[var(--color-text-main)] transition-colors">
@@ -189,17 +170,16 @@ function AppContent() {
         onOpenCart={() => setIsCartOpen(true)}
         onOpenChat={() => navigate(paths.messages)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
-        onOpenCreateListing={() => setIsCreateListingOpen(true)}
+        onOpenCreateListing={() => navigate(paths.sell)}
         onOpenProfile={(uid) => {
           const target = allUsers.find((u) => u.id === (uid || currentUser?.id));
           if (target) navigate(paths.profile(target.username));
         }}
-        onOpenAdmin={() => setIsAdminOpen(true)}
-        onOpenSellerApply={() => setIsSellerApplyOpen(true)}
-        onOpenRecycleBin={() => setIsRecycleBinOpen(true)}
-        onOpenCreateBusiness={() => setIsCreateBusinessOpen(true)}
-        onOpenSellerPortal={() => setIsSellerPortalOpen(true)}
-        onOpenAgentPortal={() => setIsAgentPortalOpen(true)}
+        onOpenAdmin={() => navigate(paths.admin)}
+        onOpenRecycleBin={() => navigate(paths.recycleBin)}
+        onOpenCreateBusiness={() => navigate(paths.registerBusiness)}
+        onOpenSellerPortal={() => navigate(paths.seller)}
+        onOpenAgentPortal={() => navigate(paths.agent)}
         onOpenFeedback={() => {
           logUserAction('open feedback (demo-bar)');
           setFeedbackContext('demo-bar');
@@ -231,11 +211,11 @@ function AppContent() {
         categories={categories}
         halls={halls}
         allUsers={allUsers}
-        onOpenCreateListing={() => setIsCreateListingOpen(true)}
-        onOpenSellerApply={() => setIsSellerApplyOpen(true)}
+        onOpenCreateListing={() => navigate(paths.sell)}
+        onOpenSellerApply={() => navigate(paths.sellerApply)}
       />
 
-      {/* MODALS & DRAWERS */}
+      {/* MODALS & DRAWERS: cart and notifications stay overlays on every route. */}
       <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
@@ -263,91 +243,6 @@ function AppContent() {
           }
         }}
       />
-
-      {isCreateListingOpen && (
-        <CreateListingModal
-          categories={categories}
-          userBusinesses={userBusinesses}
-          onClose={() => setIsCreateListingOpen(false)}
-          onCreated={loadMarketplaceData}
-        />
-      )}
-
-      {isCreateBusinessOpen && (
-        <CreateBusinessModal
-          categories={categories}
-          onClose={() => setIsCreateBusinessOpen(false)}
-          onCreated={loadMarketplaceData}
-        />
-      )}
-
-      {isSellerApplyOpen && (
-        <SellerApplyModal
-          onClose={() => setIsSellerApplyOpen(false)}
-          onSubmitted={async () => {
-            await refreshUser();
-            loadMarketplaceData();
-          }}
-        />
-      )}
-
-      {isRecycleBinOpen && (
-        <RecycleBinModal
-          onClose={() => setIsRecycleBinOpen(false)}
-          onListingsUpdated={loadMarketplaceData}
-        />
-      )}
-
-      {isSellerPortalOpen && currentUser && (
-        <SellerPortalModal
-          businesses={businesses}
-          onClose={() => setIsSellerPortalOpen(false)}
-          onViewOrder={(ord) => {
-            setIsSellerPortalOpen(false);
-            navigate(paths.order(ord.id));
-          }}
-          onOpenChatWith={async (uid, refOrder) => {
-            setIsSellerPortalOpen(false);
-            if (!currentUser) return;
-            const thread = await repo.ensureThread(currentUser.id, uid);
-            navigate(paths.messageThread(thread.id), refOrder ? { state: { referencedOrder: refOrder } } : undefined);
-          }}
-          onOpenCreateListing={() => {
-            setIsSellerPortalOpen(false);
-            setIsCreateListingOpen(true);
-          }}
-          onOpenRecycleBin={() => {
-            setIsSellerPortalOpen(false);
-            setIsRecycleBinOpen(true);
-          }}
-        />
-      )}
-
-      {isAgentPortalOpen && currentUser && (
-        <AgentPortalModal
-          onClose={() => setIsAgentPortalOpen(false)}
-          onViewOrder={(ord) => {
-            setIsAgentPortalOpen(false);
-            navigate(paths.order(ord.id));
-          }}
-          onOpenChatWith={async (uid, refOrder) => {
-            setIsAgentPortalOpen(false);
-            if (!currentUser) return;
-            const thread = await repo.ensureThread(currentUser.id, uid);
-            navigate(paths.messageThread(thread.id), refOrder ? { state: { referencedOrder: refOrder } } : undefined);
-          }}
-        />
-      )}
-
-      {isAdminOpen && (
-        <AdminDashboard
-          onClose={() => setIsAdminOpen(false)}
-          onRefreshData={async () => {
-            await refreshUser();
-            loadMarketplaceData();
-          }}
-        />
-      )}
 
       <Footer />
 

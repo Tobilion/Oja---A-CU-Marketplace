@@ -36,9 +36,6 @@ export function installGlobalFeedbackCapture(): void {
   window.addEventListener('unhandledrejection', (e) => {
     lastError = String((e.reason && (e.reason.message || e.reason)) || 'unhandled rejection').slice(0, 300);
   });
-  window.addEventListener('hashchange', () => {
-    logUserAction(`navigate ${window.location.hash || '(root)'}`);
-  });
 }
 
 function browserLabel(): string {
@@ -58,7 +55,7 @@ function viewportLabel(): string {
 
 function routeLabel(): string {
   if (typeof window === 'undefined') return '/';
-  return window.location.hash || window.location.pathname || '/';
+  return window.location.pathname || '/';
 }
 
 export interface FeedbackDraft {

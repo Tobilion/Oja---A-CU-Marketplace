@@ -15,6 +15,13 @@ import { OrderDetailPage } from '../pages/OrderDetailPage';
 import { CheckoutPage } from '../pages/CheckoutPage';
 import { MessagesPage } from '../pages/MessagesPage';
 import { LoginPage } from '../pages/LoginPage';
+import { SellPage } from '../pages/SellPage';
+import { SellerApplyPage } from '../pages/SellerApplyPage';
+import { RegisterBusinessPage } from '../pages/RegisterBusinessPage';
+import { RecycleBinPage } from '../pages/RecycleBinPage';
+import { SellerPortalPage } from '../pages/SellerPortalPage';
+import { AgentPortalPage } from '../pages/AgentPortalPage';
+import { AdminPage } from '../pages/AdminPage';
 import { RequireAccess } from './guards';
 import { Category, Hall, Listing, UserProfile } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -31,9 +38,7 @@ export interface AppRoutesProps {
 
 /**
  * The route table. Public browsing routes sit at the top; account-gated
- * routes wrap their page in RequireAccess (login redirect or 403). Portal
- * routes are added in later phases while the remaining modals stay mounted
- * in App.tsx until they are converted.
+ * routes wrap their page in RequireAccess (login redirect or 403).
  */
 export const AppRoutes: React.FC<AppRoutesProps> = ({
   listings,
@@ -105,6 +110,70 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
         element={
           <RequireAccess requirement="signed-in">
             <MessagesPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.sell}
+        element={
+          <RequireAccess requirement="seller">
+            <SellPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.registerBusiness}
+        element={
+          <RequireAccess requirement="signed-in">
+            <RegisterBusinessPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.sellerApply}
+        element={
+          <RequireAccess requirement="signed-in">
+            <SellerApplyPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.seller}
+        element={
+          <RequireAccess requirement="seller">
+            <SellerPortalPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.recycleBin}
+        element={
+          <RequireAccess requirement="signed-in">
+            <RecycleBinPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.agent}
+        element={
+          <RequireAccess requirement="agent">
+            <AgentPortalPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.admin}
+        element={
+          <RequireAccess requirement="admin">
+            <AdminPage />
+          </RequireAccess>
+        }
+      />
+      <Route
+        path={routePatterns.adminTab}
+        element={
+          <RequireAccess requirement="admin">
+            <AdminPage />
           </RequireAccess>
         }
       />

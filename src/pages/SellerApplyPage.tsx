@@ -4,29 +4,26 @@
  */
 
 import React, { useState } from 'react';
-import { X, ShieldCheck, AlertCircle, Building } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import { X, ShieldCheck, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface SellerApplyModalProps {
-  onClose: () => void;
-  onSubmitted: () => void;
-}
-
-export const SellerApplyModal: React.FC<SellerApplyModalProps> = ({
-  onClose,
-  onSubmitted,
-}) => {
-  const { currentUser, applyForSeller } = useAuth();
+/**
+ * Seller badge application as a route, same form as the modal it replaces.
+ */
+export const SellerApplyPage: React.FC = () => {
+  const { currentUser, applyForSeller, refreshUser } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.home);
 
   const [bankName, setBankName] = useState('Guaranty Trust Bank (GTB)');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState(currentUser?.fullName || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const modalRef = useModalEscape(true, onClose);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,8 +46,9 @@ export const SellerApplyModal: React.FC<SellerApplyModalProps> = ({
         accountName: accountName.trim(),
       });
       showToast('Seller application submitted! Admins will consider your request.', 'success');
-      onSubmitted();
-      onClose();
+      requestMarketplaceRefresh();
+      await refreshUser();
+      handleClose();
     } catch {
       setErrorMsg('Failed to submit application');
     } finally {
@@ -59,15 +57,15 @@ export const SellerApplyModal: React.FC<SellerApplyModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-md mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-[var(--color-brand-primary)]" />
             <h2 className="text-base font-bold text-[var(--color-text-main)]">Apply for Seller Badge</h2>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -137,7 +135,7 @@ export const SellerApplyModal: React.FC<SellerApplyModalProps> = ({
           <div className="pt-2 flex justify-end gap-2 border-t border-[var(--color-border)]">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)]"
             >
               Cancel

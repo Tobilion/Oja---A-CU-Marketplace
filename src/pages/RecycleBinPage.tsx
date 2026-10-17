@@ -5,29 +5,26 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, RotateCcw, AlertTriangle, Package } from 'lucide-react';
-import { Listing } from '../../types';
-import { repo } from '../../data';
-import { useAuth } from '../../context/AuthContext';
-import { formatNaira } from '../../utils/money';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { ListingImagePlaceholder } from '../common/ListingImagePlaceholder';
+import { Listing } from '../types';
+import { repo } from '../data';
+import { useAuth } from '../context/AuthContext';
+import { formatNaira } from '../utils/money';
+import { useNotifications } from '../context/NotificationContext';
+import { ListingImagePlaceholder } from '../components/common/ListingImagePlaceholder';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface RecycleBinModalProps {
-  onClose: () => void;
-  onListingsUpdated: () => void;
-}
-
-export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
-  onClose,
-  onListingsUpdated,
-}) => {
+/**
+ * Recycle bin as a route, same list and actions as the modal it replaces.
+ */
+export const RecycleBinPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.seller);
 
   const [recycledListings, setRecycledListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const modalRef = useModalEscape(true, onClose);
 
   const loadRecycled = async () => {
     setLoading(true);
@@ -50,7 +47,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
     await repo.restoreFromRecycleBin(id);
     showToast('Listing restored to active marketplace', 'success');
     await loadRecycled();
-    onListingsUpdated();
+    requestMarketplaceRefresh();
   };
 
   const handlePermanentDelete = async (id: string) => {
@@ -58,26 +55,26 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
       await repo.permanentlyDeleteListing(id);
       showToast('Listing permanently deleted', 'info');
       await loadRecycled();
-      onListingsUpdated();
+      requestMarketplaceRefresh();
     }
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-lg mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trash2 className="w-5 h-5 text-neutral-500" />
             <h2 className="text-base font-bold text-[var(--color-text-main)]">Recycle Bin</h2>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto p-6 space-y-4 text-xs">
+        <div className="p-6 space-y-4 text-xs">
           <div className="p-3 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
             <span>Items placed in the recycle bin are auto-purged after 30 days.</span>

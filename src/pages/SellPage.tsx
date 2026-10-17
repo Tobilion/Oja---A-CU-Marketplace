@@ -4,47 +4,65 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Upload, AlertTriangle, Sparkles, Check, Image as ImageIcon } from 'lucide-react';
-import { Category, ListingCondition, ListingPostAs, Business } from '../../types';
-import { predictCategoryFromTitle, checkBannedContent } from '../../utils/taxonomy';
-import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationContext';
-import { repo } from '../../data';
-import { REQUIRE_LISTING_PHOTOS } from '../../config/appConfig';
-import { validatePhotoCount } from '../../utils/listingPhotos';
-import { compressImageClientSide } from '../../utils/imageCompress';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import { X, Upload, AlertTriangle, Sparkles } from 'lucide-react';
+import { Category, ListingCondition, ListingPostAs, Business } from '../types';
+import { predictCategoryFromTitle, checkBannedContent } from '../utils/taxonomy';
+import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import { repo } from '../data';
+import { validatePhotoCount } from '../utils/listingPhotos';
+import { compressImageClientSide } from '../utils/imageCompress';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface CreateListingModalProps {
-  categories: Category[];
-  userBusinesses: Business[];
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-export const CreateListingModal: React.FC<CreateListingModalProps> = ({
-  categories,
-  userBusinesses,
-  onClose,
-  onCreated,
-}) => {
+/**
+ * Listing creation as a route, same form as the modal it replaces; the
+ * category list and the seller's own businesses are fetched here.
+ */
+export const SellPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.seller);
 
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [userBusinesses, setUserBusinesses] = useState<Business[]>([]);
   const [title, setTitle] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id || 'cat_electronics');
+  const [categoryId, setCategoryId] = useState('');
   const [condition, setCondition] = useState<ListingCondition>('Like new');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('1');
   const [description, setDescription] = useState('');
   const [defaultDeliveryDays, setDefaultDeliveryDays] = useState('1');
   const [postAs, setPostAs] = useState<ListingPostAs>('me');
-  const [selectedBusinessId, setSelectedBusinessId] = useState(userBusinesses[0]?.id || '');
+  const [selectedBusinessId, setSelectedBusinessId] = useState('');
   const [dynamicValues, setDynamicValues] = useState<Record<string, string | number>>({});
   const [images, setImages] = useState<string[]>([]);
   const [suggestedCat, setSuggestedCat] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    repo.getCategories().then(setCategories).catch(() => setCategories([]));
+    repo
+      .getBusinesses()
+      .then((all) => setUserBusinesses(all.filter((b) => b.ownerId === currentUser?.id)))
+      .catch(() => setUserBusinesses([]));
+  }, [currentUser]);
+
+  // Categories arrive asynchronously; preselect one once they load.
+  useEffect(() => {
+    if (!categoryId && categories.length > 0) {
+      setCategoryId(categories[0].id);
+    }
+  }, [categories, categoryId]);
+
+  // The seller's businesses arrive asynchronously; preselect the first.
+  useEffect(() => {
+    if (!selectedBusinessId && userBusinesses.length > 0) {
+      setSelectedBusinessId(userBusinesses[0].id);
+    }
+  }, [userBusinesses, selectedBusinessId]);
 
   // Category prediction on title typing
   useEffect(() => {
@@ -61,7 +79,6 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
   }, [title, categoryId]);
 
   const activeCategory = categories.find((c) => c.id === categoryId);
-  const modalRef = useModalEscape(true, onClose);
 
   // Client-side photo handling: M-04 compresses to max ~1000px JPEG ~0.75 so
   // demo-mode localStorage never holds raw multi-megabyte uploads.
@@ -103,6 +120,11 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
     const numStock = parseInt(stock, 10);
     if (isNaN(numStock) || numStock <= 0) {
       setValidationError('Quantity in stock must be at least 1.');
+      return;
+    }
+
+    if (categories.length === 0 || !categories.some((c) => c.id === categoryId)) {
+      setValidationError('Category list failed to load. Check your connection and try again.');
       return;
     }
 
@@ -150,8 +172,8 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
       });
 
       showToast('Listing published successfully!', 'success');
-      onCreated();
-      onClose();
+      requestMarketplaceRefresh();
+      handleClose();
     } catch (err: any) {
       setValidationError(err.message || 'Failed to create listing');
     } finally {
@@ -160,18 +182,18 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-2xl mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
           <h2 className="text-base font-bold text-[var(--color-text-main)]">Create New Listing</h2>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           {validationError && (
             <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-300 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -410,7 +432,7 @@ export const CreateListingModal: React.FC<CreateListingModalProps> = ({
           <div className="pt-2 flex justify-end gap-2 border-t border-[var(--color-border)]">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)]"
             >
               Cancel

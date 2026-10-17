@@ -4,23 +4,19 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Package, MessageSquare, Key, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { Order, SubOrder, Review } from '../../types';
-import { AvailableDelivery as BoardDelivery } from '../../data/repo';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { useListQuery } from '../../hooks/useListQuery';
-import { ListControls } from '../common/ListControls';
-import { formatNaira } from '../../utils/money';
-import { formatHallName } from '../../utils/formatHall';
-
-interface AgentPortalModalProps {
-  onClose: () => void;
-  onViewOrder: (order: Order) => void;
-  onOpenChatWith: (userId: string, order?: Order) => void;
-}
+import { Order, SubOrder, Review } from '../types';
+import { AvailableDelivery as BoardDelivery } from '../data/repo';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { useListQuery } from '../hooks/useListQuery';
+import { ListControls } from '../components/common/ListControls';
+import { formatNaira } from '../utils/money';
+import { formatHallName } from '../utils/formatHall';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
 type AgentTab = 'available' | 'active' | 'done';
 
@@ -36,14 +32,11 @@ const TERMINAL = ['completed', 'cancelled', 'refunded'];
  * plus the eligibility-filtered board. No earnings model exists by decision,
  * so the portal shows counts and ratings only.
  */
-export const AgentPortalModal: React.FC<AgentPortalModalProps> = ({
-  onClose,
-  onViewOrder,
-  onOpenChatWith,
-}) => {
+export const AgentPortalPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
-  const modalRef = useModalEscape(true, onClose);
+  const navigate = useNavigate();
+  const handleClose = useSmartBack(paths.home);
 
   const [tab, setTab] = useState<AgentTab>('available');
   const [board, setBoard] = useState<BoardDelivery[]>([]);
@@ -96,6 +89,16 @@ export const AgentPortalModal: React.FC<AgentPortalModalProps> = ({
   useEffect(() => {
     load();
   }, [currentUser]);
+
+  const handleViewOrder = (order: Order) => {
+    navigate(paths.order(order.id));
+  };
+
+  const handleOpenChatWith = async (userId: string, order: Order) => {
+    if (!currentUser) return;
+    const thread = await repo.ensureThread(currentUser.id, userId);
+    navigate(paths.messageThread(thread.id), { state: { referencedOrder: order } });
+  };
 
   const toggleAvailable = () => {
     const next = !available;
@@ -243,8 +246,8 @@ export const AgentPortalModal: React.FC<AgentPortalModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-4xl mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-[var(--color-text-main)]">Deliveries</h2>
@@ -264,13 +267,13 @@ export const AgentPortalModal: React.FC<AgentPortalModalProps> = ({
             >
               {available ? 'Available' : 'Paused'}
             </button>
-            <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close deliveries">
+            <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close deliveries">
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="overflow-y-auto p-6 space-y-5 text-xs flex-1">
+        <div className="p-6 space-y-5 text-xs">
           {loading ? (
             <p className="text-center py-12 text-[var(--color-text-muted)]">Loading deliveries...</p>
           ) : loadError ? (
@@ -413,13 +416,13 @@ export const AgentPortalModal: React.FC<AgentPortalModalProps> = ({
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                           {nextAction(row)}
                           <button
-                            onClick={() => onViewOrder(row.order)}
+                            onClick={() => handleViewOrder(row.order)}
                             className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)]"
                           >
                             Track
                           </button>
                           <button
-                            onClick={() => onOpenChatWith(row.order.buyerId, row.order)}
+                            onClick={() => handleOpenChatWith(row.order.buyerId, row.order)}
                             className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)] flex items-center gap-1"
                           >
                             <MessageSquare className="w-3.5 h-3.5" /> Buyer

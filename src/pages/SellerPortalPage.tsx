@@ -4,25 +4,18 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, CheckCircle2, XCircle, Truck, MessageSquare, Wallet } from 'lucide-react';
-import { Order, SubOrder, Business, BankDetails } from '../../types';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { useListQuery } from '../../hooks/useListQuery';
-import { ListControls } from '../common/ListControls';
-import { formatNaira } from '../../utils/money';
-import { formatHallName } from '../../utils/formatHall';
-
-interface SellerPortalModalProps {
-  businesses: Business[];
-  onClose: () => void;
-  onViewOrder: (order: Order) => void;
-  onOpenChatWith: (userId: string, order?: Order) => void;
-  onOpenCreateListing: () => void;
-  onOpenRecycleBin: () => void;
-}
+import { Order, SubOrder, Business, BankDetails } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { useListQuery } from '../hooks/useListQuery';
+import { ListControls } from '../components/common/ListControls';
+import { formatNaira } from '../utils/money';
+import { formatHallName } from '../utils/formatHall';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
 type SellerTab = 'new' | 'progress' | 'done' | 'cancelled' | 'payouts';
 
@@ -41,18 +34,13 @@ const CANCELLED_STATES = ['cancelled', 'refunded', 'disputed'];
  * their own sub-orders (RLS/RPC server-side; filtered here for display), with
  * the buyer's name, hall, and delivery method but never private buyer fields.
  */
-export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
-  businesses,
-  onClose,
-  onViewOrder,
-  onOpenChatWith,
-  onOpenCreateListing,
-  onOpenRecycleBin,
-}) => {
+export const SellerPortalPage: React.FC = () => {
   const { currentUser, refreshUser } = useAuth();
   const { showToast } = useNotifications();
-  const modalRef = useModalEscape(true, onClose);
+  const navigate = useNavigate();
+  const handleClose = useSmartBack(paths.home);
 
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [rows, setRows] = useState<SellerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -76,10 +64,12 @@ export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
     setLoading(true);
     setLoadError(null);
     try {
-      const [orders, listings] = await Promise.all([
+      const [orders, listings, allBusinesses] = await Promise.all([
         repo.getOrdersForUser(currentUser.id),
         repo.getListings(false),
+        repo.getBusinesses(),
       ]);
+      setBusinesses(allBusinesses);
       const mine: SellerRow[] = [];
       for (const order of orders) {
         for (const sub of order.subOrders) {
@@ -103,6 +93,16 @@ export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
   useEffect(() => {
     load();
   }, [currentUser]);
+
+  const handleViewOrder = (order: Order) => {
+    navigate(paths.order(order.id));
+  };
+
+  const handleOpenChatWith = async (userId: string, order: Order) => {
+    if (!currentUser) return;
+    const thread = await repo.ensureThread(currentUser.id, userId);
+    navigate(paths.messageThread(thread.id), { state: { referencedOrder: order } });
+  };
 
   const filtered = useMemo(() => {
     const states =
@@ -210,8 +210,8 @@ export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-4xl mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-[var(--color-text-main)]">My Store</h2>
@@ -219,12 +219,12 @@ export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
               {currentUser?.ratingAverage.toFixed(1)} rating · {rows.length} sub-orders
             </p>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close store">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close store">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="overflow-y-auto p-6 space-y-5 text-xs flex-1">
+        <div className="p-6 space-y-5 text-xs">
           {loading ? (
             <p className="text-center py-12 text-[var(--color-text-muted)]">Loading your store...</p>
           ) : loadError ? (
@@ -451,13 +451,13 @@ export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
                               </button>
                             )}
                             <button
-                              onClick={() => onViewOrder(order)}
+                              onClick={() => handleViewOrder(order)}
                               className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)]"
                             >
                               Track
                             </button>
                             <button
-                              onClick={() => onOpenChatWith(order.buyerId, order)}
+                              onClick={() => handleOpenChatWith(order.buyerId, order)}
                               className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)] flex items-center gap-1"
                             >
                               <MessageSquare className="w-3.5 h-3.5" /> Message Buyer
@@ -480,10 +480,10 @@ export const SellerPortalModal: React.FC<SellerPortalModalProps> = ({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                <button onClick={onOpenCreateListing} className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)] font-semibold">
+                <button onClick={() => navigate(paths.sell)} className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)] font-semibold">
                   + New Listing
                 </button>
-                <button onClick={onOpenRecycleBin} className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)]">
+                <button onClick={() => navigate(paths.recycleBin)} className="px-3.5 py-1.5 rounded-lg border border-[var(--color-border)]">
                   Recycle Bin
                 </button>
               </div>

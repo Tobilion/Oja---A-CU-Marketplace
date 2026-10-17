@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   X,
   ShieldCheck,
@@ -20,33 +21,67 @@ import {
   History,
   MapPin,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge, FeedbackItem, AppSettings } from '../../types';
-import { AdminUserUpdates } from '../../data';
-import { useListQuery } from '../../hooks/useListQuery';
-import { ListControls } from '../common/ListControls';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { canVerifyPayments, canManageLogistics, canModerate, isSuperAdmin } from '../../config/appConfig';
-import { formatNaira } from '../../utils/money';
-import { formatHallName } from '../../utils/formatHall';
-import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { Order, SubOrder, UserProfile, Business, Report, AuditLogEntry, Hall, Listing, UserBadge, FeedbackItem, AppSettings } from '../types';
+import { AdminUserUpdates } from '../data';
+import { useListQuery } from '../hooks/useListQuery';
+import { ListControls } from '../components/common/ListControls';
+import { canVerifyPayments, canManageLogistics, canModerate, isSuperAdmin } from '../config/appConfig';
+import { formatNaira } from '../utils/money';
+import { formatHallName } from '../utils/formatHall';
+import { useNotifications } from '../context/NotificationContext';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
 
-interface AdminDashboardProps {
-  onClose: () => void;
-  onRefreshData: () => void;
-}
+type AdminTabId =
+  | 'today'
+  | 'payments'
+  | 'sellers'
+  | 'businesses'
+  | 'reports'
+  | 'late'
+  | 'payouts'
+  | 'users'
+  | 'halls'
+  | 'audit'
+  | 'deliveries'
+  | 'agents'
+  | 'feedback'
+  | 'settings';
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  onClose,
-  onRefreshData,
-}) => {
+const ADMIN_TABS: AdminTabId[] = [
+  'today',
+  'payments',
+  'sellers',
+  'businesses',
+  'reports',
+  'late',
+  'payouts',
+  'users',
+  'halls',
+  'audit',
+  'deliveries',
+  'agents',
+  'feedback',
+  'settings',
+];
+
+/**
+ * Admin operations cockpit. The open tab is mirrored in the URL
+ * (/admin/:tab) so a queue can be linked or bookmarked directly.
+ */
+export const AdminPage: React.FC = () => {
   const { currentUser, allUsers, refreshUser } = useAuth();
   const { showToast } = useNotifications();
+  const navigate = useNavigate();
+  const { tab: tabParam } = useParams<{ tab?: string }>();
+  const handleClose = useSmartBack(paths.home);
 
-  const [activeTab, setActiveTab] = useState<
-    'today' | 'payments' | 'sellers' | 'businesses' | 'reports' | 'late' | 'payouts' | 'users' | 'halls' | 'audit' | 'deliveries' | 'agents' | 'feedback' | 'settings'
-  >('today');
+  const [activeTab, setActiveTab] = useState<AdminTabId>(() =>
+    tabParam && ADMIN_TABS.includes(tabParam as AdminTabId) ? (tabParam as AdminTabId) : 'today'
+  );
 
   // 5.4 role-scoped portals. A moderator sees moderation queues, a payment
   // verifier sees money queues, a logistics admin sees movement queues, and
@@ -86,7 +121,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newHallName, setNewHallName] = useState('');
   const [newHallGender, setNewHallGender] = useState<'male' | 'female'>('male');
   const [isProcessing, setIsProcessing] = useState(false);
-  const modalRef = useModalEscape(true, onClose);
 
   const loadData = async () => {
     const [ords, bizs, reps, logs, hls, fbs, sts] = await Promise.all([
@@ -120,6 +154,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     loadData();
   }, []);
+
+  // Admin decisions change shared marketplace data; route pages listen for
+  // this event instead of receiving refresh callbacks through props.
+  const refreshData = () => {
+    void refreshUser();
+    requestMarketplaceRefresh();
+  };
+
+  // Mirror the open tab in the URL so /admin/reports is shareable and the
+  // address bar always matches what is on screen.
+  useEffect(() => {
+    const desired = activeTab === 'today' ? paths.admin : paths.adminTab(activeTab);
+    const current = tabParam ? paths.adminTab(tabParam) : paths.admin;
+    if (desired !== current) {
+      navigate(desired, { replace: true });
+    }
+  }, [activeTab, tabParam, navigate]);
 
   // H-02/H-03: shared search, sort, and pagination over the user directory.
   const userQuery = useListQuery<UserProfile>({
@@ -485,7 +536,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
     showToast(approved ? 'Payment confirmed' : 'Payment rejected', 'info');
     await loadData();
-    onRefreshData();
+    refreshData();
   };
 
   const handleApproveSeller = async (targetUser: UserProfile, approve: boolean) => {
@@ -517,7 +568,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     showToast(approve ? 'Seller approved' : 'Seller rejected', 'info');
     await refreshUser();
     await loadData();
-    onRefreshData();
+    refreshData();
   };
 
   const handleApproveBusiness = async (biz: Business, approve: boolean) => {
@@ -536,7 +587,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
     showToast(approve ? 'Business approved' : 'Business rejected', 'info');
     await loadData();
-    onRefreshData();
+    refreshData();
   };
 
   const pendingTransfers = businesses.filter((b) => b.transferRequest?.status === 'pending');
@@ -559,7 +610,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       showToast(approved ? 'Ownership transferred.' : 'Transfer rejected.', 'info');
       await loadData();
-      onRefreshData();
+      refreshData();
     } catch (err: any) {
       showToast(err?.message || 'Transfer decision failed', 'error');
     }
@@ -636,7 +687,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       showToast('Settings saved.', 'success');
       await loadData();
-      onRefreshData();
+      refreshData();
     } catch (err: any) {
       showToast(err?.message || 'Settings save failed', 'error');
     } finally {
@@ -663,8 +714,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-5xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-5xl mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -691,7 +742,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </select>
               </label>
             )}
-            <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close admin">
+            <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close admin">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -719,7 +770,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Tab Content */}
-        <div className="overflow-y-auto p-6 space-y-6 text-xs flex-1">
+        <div className="p-6 space-y-6 text-xs">
           {/* 1. TODAY COCKPIT */}
           {activeTab === 'today' && (
             <div className="space-y-6">
