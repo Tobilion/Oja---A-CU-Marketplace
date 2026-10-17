@@ -295,6 +295,18 @@ ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+-- Admin-level helper for RLS. Policies must never subquery public.profiles
+-- directly: the subquery re-enters the profiles policies and Postgres raises
+-- 42P17 "infinite recursion detected in policy for relation profiles".
+-- SECURITY DEFINER runs as the table owner, which bypasses RLS.
+CREATE OR REPLACE FUNCTION public.current_admin_level()
+RETURNS admin_level
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$ SELECT admin_level FROM public.profiles WHERE id = auth.uid() $$;
+
 -- M-02: Public Profile View (Strips room_number, matric_number, reg_number, personal_email, school_email, bank_details)
 CREATE OR REPLACE VIEW public.public_profiles AS
 SELECT
@@ -320,7 +332,7 @@ GRANT SELECT ON public.public_profiles TO anon, authenticated;
 DROP POLICY IF EXISTS profiles_public_read ON public.profiles;
 CREATE POLICY profiles_owner_or_admin_read ON public.profiles FOR SELECT USING (
     auth.uid() = id OR
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+    public.current_admin_level() IS NOT NULL
 );
 
 -- B-04: Prevent self-escalation on profiles
@@ -330,7 +342,7 @@ CREATE POLICY profiles_self_update ON public.profiles FOR UPDATE USING (auth.uid
 -- policies OR together, so this adds admin writes without widening self-update.
 DROP POLICY IF EXISTS profiles_admin_update ON public.profiles;
 CREATE POLICY profiles_admin_update ON public.profiles FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 
 CREATE OR REPLACE FUNCTION public.protect_profile_privileged_columns()
@@ -441,7 +453,7 @@ CREATE POLICY sub_orders_participant_read ON public.sub_orders FOR SELECT USING 
   seller_id = auth.uid() OR
   agent_id = auth.uid() OR
   EXISTS (SELECT 1 FROM public.orders WHERE orders.id = sub_orders.order_id AND orders.buyer_id = auth.uid()) OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 
 -- Chat: Participants only (Admins can view reported threads)
@@ -457,7 +469,7 @@ CREATE POLICY chat_messages_participant_read ON public.chat_messages FOR SELECT 
     SELECT 1 FROM public.chat_threads
     WHERE chat_threads.id = chat_messages.thread_id
     AND chat_threads.is_reported = true
-    AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+    AND public.current_admin_level() IS NOT NULL
   )
 );
 
@@ -852,7 +864,7 @@ DROP POLICY IF EXISTS halls_public_read ON public.halls;
 CREATE POLICY halls_public_read ON public.halls FOR SELECT USING (true);
 DROP POLICY IF EXISTS halls_admin_write ON public.halls;
 CREATE POLICY halls_admin_write ON public.halls FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level = 'super_admin')
+  public.current_admin_level() = 'super_admin'
 );
 
 DROP POLICY IF EXISTS categories_public_read ON public.categories;
@@ -864,7 +876,7 @@ DROP POLICY IF EXISTS settings_auth_read ON public.app_settings;
 CREATE POLICY settings_auth_read ON public.app_settings FOR SELECT USING (auth.uid() IS NOT NULL);
 DROP POLICY IF EXISTS settings_super_admin_write ON public.app_settings;
 CREATE POLICY settings_super_admin_write ON public.app_settings FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level = 'super_admin')
+  public.current_admin_level() = 'super_admin'
 );
 
 -- 8.4 Profiles: allow a new user to insert ONLY their own row.
@@ -877,21 +889,21 @@ CREATE POLICY profiles_insert_own ON public.profiles FOR INSERT WITH CHECK (auth
 DROP POLICY IF EXISTS businesses_public_read ON public.businesses;
 CREATE POLICY businesses_public_read ON public.businesses FOR SELECT USING (
   status = 'approved' OR owner_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 DROP POLICY IF EXISTS businesses_owner_insert ON public.businesses;
 CREATE POLICY businesses_owner_insert ON public.businesses FOR INSERT WITH CHECK (owner_id = auth.uid());
 DROP POLICY IF EXISTS businesses_owner_update ON public.businesses;
 CREATE POLICY businesses_owner_update ON public.businesses FOR UPDATE USING (
   owner_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 
 -- 8.6 Listings: sellers and Moderator+ may delete (recycle-bin flow deletes).
 DROP POLICY IF EXISTS listings_owner_delete ON public.listings;
 CREATE POLICY listings_owner_delete ON public.listings FOR DELETE USING (
   seller_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IN ('super_admin', 'moderator'))
+  public.current_admin_level() IN ('super_admin', 'moderator')
 );
 
 -- 8.7 Orders: buyer inserts and updates only their own rows.
@@ -915,11 +927,11 @@ CREATE POLICY reports_reporter_insert ON public.reports FOR INSERT WITH CHECK (r
 DROP POLICY IF EXISTS reports_admin_read ON public.reports;
 CREATE POLICY reports_admin_read ON public.reports FOR SELECT USING (
   reporter_id = auth.uid() OR
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 DROP POLICY IF EXISTS reports_admin_update ON public.reports;
 CREATE POLICY reports_admin_update ON public.reports FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 
 -- 8.10 Chat: participants may write; participants and admins on reported
@@ -940,11 +952,11 @@ CREATE POLICY notifications_owner_update ON public.notifications FOR UPDATE USIN
 -- Immutability (no UPDATE/DELETE policy) keeps the trail append-only.
 DROP POLICY IF EXISTS audit_admin_read ON public.audit_logs;
 CREATE POLICY audit_admin_read ON public.audit_logs FOR SELECT USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 DROP POLICY IF EXISTS audit_admin_insert ON public.audit_logs;
 CREATE POLICY audit_admin_insert ON public.audit_logs FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 
 -- 8.13 School-email enforcement (server-side).
@@ -989,7 +1001,7 @@ CREATE POLICY order_items_participant_read ON public.order_items FOR SELECT USIN
     SELECT 1 FROM public.sub_orders s WHERE s.id = order_items.sub_order_id AND (
       s.seller_id = auth.uid() OR s.agent_id = auth.uid() OR
       EXISTS (SELECT 1 FROM public.orders o WHERE o.id = s.order_id AND o.buyer_id = auth.uid()) OR
-      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+      public.current_admin_level() IS NOT NULL
     )
   )
 );
@@ -1161,18 +1173,18 @@ SELECT cron.schedule('oja-late-alerts', '0 * * * *', 'SELECT public.sweep_late_a
 -- use the RPCs below).
 DROP POLICY IF EXISTS sub_orders_admin_update ON public.sub_orders;
 CREATE POLICY sub_orders_admin_update ON public.sub_orders FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IN ('super_admin', 'payment_verifier'))
+  public.current_admin_level() IN ('super_admin', 'payment_verifier')
 ) WITH CHECK (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IN ('super_admin', 'payment_verifier'))
+  public.current_admin_level() IN ('super_admin', 'payment_verifier')
 );
 
 -- Payment verification, dispute handling, and cancellation update the parent
 -- order row, which buyers own. Admins acting on others' orders need this.
 DROP POLICY IF EXISTS orders_admin_update ON public.orders;
 CREATE POLICY orders_admin_update ON public.orders FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 ) WITH CHECK (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 
 -- 11.2 Seller accepts a sub-order and sets the delivery clock.
@@ -1383,11 +1395,11 @@ DROP POLICY IF EXISTS feedback_anyone_insert ON public.feedback;
 CREATE POLICY feedback_anyone_insert ON public.feedback FOR INSERT WITH CHECK (true);
 DROP POLICY IF EXISTS feedback_admin_read ON public.feedback;
 CREATE POLICY feedback_admin_read ON public.feedback FOR SELECT USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );
 DROP POLICY IF EXISTS feedback_admin_update ON public.feedback;
 CREATE POLICY feedback_admin_update ON public.feedback FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 ) WITH CHECK (
-  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND admin_level IS NOT NULL)
+  public.current_admin_level() IS NOT NULL
 );

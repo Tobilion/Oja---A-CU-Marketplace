@@ -117,11 +117,19 @@ export class SupabaseRepository implements Repository {
     // M-02: full profiles are owner/admin-only under RLS. Anonymous shoppers
     // and non-admin users read the public_profiles view (no room, matric/reg,
     // emails, or bank details); admins still get full rows.
+    // RLS filters rows without raising an error, so a guest reads an empty
+    // list and a regular member only their own row; both must fall through
+    // to the public view or sellers would be invisible on the marketplace.
     const { data, error } = await this.client.from('profiles').select('*');
-    if (!error) return (data || []).map(this.mapProfile);
+    const privateUsers = error ? [] : (data || []).map(this.mapProfile);
+    if (privateUsers.length > 1) return privateUsers;
     const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*');
-    if (pubError) throw error;
-    return (pub || []).map(this.mapPublicProfile);
+    if (pubError) throw error || pubError;
+    const publicUsers = (pub || []).map(this.mapPublicProfile);
+    if (privateUsers.length === 0) return publicUsers;
+    // Regular member: keep their own full row, fill the rest from the view.
+    const privateById = new Map(privateUsers.map((u) => [u.id, u]));
+    return publicUsers.map((u) => privateById.get(u.id) || u);
   }
 
   async getUserById(id: string): Promise<UserProfile | null> {
