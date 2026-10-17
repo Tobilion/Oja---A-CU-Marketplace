@@ -4,12 +4,14 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { BrowserRouter } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Navbar } from './components/layout/Navbar';
-import { MarketplaceHome } from './components/marketplace/MarketplaceHome';
+import { AppRoutes } from './routes/AppRoutes';
+import { useScrollRestoration } from './hooks/useScrollRestoration';
 import { ProductDetailModal } from './components/marketplace/ProductDetailModal';
 import { BusinessStorefrontModal } from './components/business/BusinessStorefrontModal';
 import { CreateBusinessModal } from './components/business/CreateBusinessModal';
@@ -42,6 +44,8 @@ function AppContent() {
   const [returningFromAuthLink] = useState(() =>
     /(?:^|[#&])access_token=/.test(window.location.hash)
   );
+
+  useScrollRestoration();
 
   useEffect(() => {
     installGlobalFeedbackCapture();
@@ -266,10 +270,11 @@ function AppContent() {
         </div>
       )}
 
-      <MarketplaceHome
+      <AppRoutes
         listings={listings}
         categories={categories}
         halls={halls}
+        businesses={businesses}
         allUsers={allUsers}
         onSelectListing={(listing) => setSelectedListing(listing)}
         onOpenCreateListing={() => setIsCreateListingOpen(true)}
@@ -515,14 +520,16 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <CartProvider>
-          <NotificationProvider>
-            <AppContent />
-          </NotificationProvider>
-        </CartProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <BrowserRouter>
+      <ThemeProvider>
+        <AuthProvider>
+          <CartProvider>
+            <NotificationProvider>
+              <AppContent />
+            </NotificationProvider>
+          </CartProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </BrowserRouter>
   );
 }
