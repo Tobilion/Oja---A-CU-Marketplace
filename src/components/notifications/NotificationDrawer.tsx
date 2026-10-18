@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { X, Bell, CheckCircle2, Clock, Send, ShieldCheck, ShoppingBag } from 'lucide-react';
+import { X, Bell, Send } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
 import { AppNotification } from '../../types';
 import { useModalEscape } from '../../hooks/useModalEscape';

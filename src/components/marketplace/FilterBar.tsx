@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { SlidersHorizontal, X, Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import { Category, Hall } from '../../types';
 import { FilterOptions } from '../../utils/search';
 

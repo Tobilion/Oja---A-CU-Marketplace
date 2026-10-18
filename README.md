@@ -33,26 +33,35 @@ mock data. See `GO_LIVE.md` for the four steps to production.
 
 ```powershell
 npm run lint
-npx tsx src/utils/deliveryFee.test.ts
-npx tsx src/utils/transitions.test.ts
-npx tsx src/data/logout.test.ts
-npx tsx src/utils/listQuery.test.ts
-npx tsx src/utils/listingPhotos.test.ts
-npx tsx src/utils/adminGuards.test.ts
-npx tsx src/data/seedCoverage.test.ts
+Get-ChildItem -Recurse src -Filter *.test.ts | ForEach-Object { npx tsx $_.FullName }
 npm run build
 ```
+
+13 suites run that way: `deliveryFee`, `transitions`, `logout`,
+`listQuery`, `listingPhotos`, `adminGuards`, `seedCoverage`, `phone`,
+`orbitMath`, `paths`, `safeNext`, `access`, `authReturn` (each file also
+runs standalone with `npx tsx <file>`).
 
 With `VITE_APP_MODE=public` set, `npm run build` also verifies the public
 bundle compiles (runtime still needs Supabase credentials).
 
 ## Project structure
 
-- `src/components/` — UI by area: `admin/`, `auth/`, `business/`,
-  `cart/`, `chat/`, `checkout/`, `common/` (shared `ListControls`,
-  `ListingImagePlaceholder`), `delivery/` (agent portal), `feedback/`,
-  `layout/` (Navbar, Footer, TrustStrip), `listings/`, `marketplace/`,
-  `notifications/`, `orders/`, `profile/`, `seller/` (portal, apply, recycle).
+- `src/pages/` — full-screen views reached by URL: public `ListingPage`,
+  `ProfilePage`, `StorePage`, `LoginPage`; transactional `OrdersPage`,
+  `OrderDetailPage`, `CheckoutPage`, `MessagesPage`; seller/agent/admin
+  `SellPage`, `SellerApplyPage`, `SellerPortalPage`, `RecycleBinPage`,
+  `RegisterBusinessPage`, `AgentPortalPage`, `AdminPage`; plus
+  `ForbiddenPage` and `NotFoundPage`.
+- `src/routes/` — routing core: `paths` (URL builders + patterns),
+  `safeNext` (open-redirect guard), `access` + `guards` (role gates),
+  `AppRoutes` (route table with lazy chunks), `useSmartBack`, `authReturn`
+  (OAuth deep-link stash), plus the route test files.
+- `src/components/` — reusable UI: `auth/`, `cart/` (CartDrawer),
+  `chat/` (ThreadList, ThreadView), `common/` (ListControls,
+  ListingImagePlaceholder, RouteFallback), `feedback/`, `landing/`,
+  `layout/` (Navbar, Footer, TrustStrip), `marketplace/` (home, search,
+  filters, cards, ReviewModal), `notifications/` (drawer).
 - `src/data/` — swappable repository: `repo.ts` (interface), `mockRepo.ts`
   (localStorage demo), `supabaseRepo.ts` (live), `mockStorage.ts`,
   `seedUsers.ts`, `seedListings.ts`, `seedOrders.ts`, `seedExtra.ts`
@@ -61,8 +70,8 @@ bundle compiles (runtime still needs Supabase credentials).
   (order state machine), `money`, `formatHall`, `listQuery` (shared
   search/sort/pagination), `listingPhotos`, `adminGuards`, `feedback`,
   `search` (Fuse + synonyms), `taxonomy`, `imageCompress`, `halls`.
-- `src/hooks/` — `useModalEscape` (Escape/scroll-lock/focus-trap),
-  `useListQuery`.
+- `src/hooks/` — `useModalEscape` (Escape/scroll-lock/focus-trap for
+  overlays), `useListQuery`, `useScrollRestoration`, `useDocumentTitle`.
 - `src/context/` — Auth, Cart, Notifications, Theme.
 - `src/config/appConfig.ts` — mode flag, product constants
   (`REQUIRE_LISTING_PHOTOS = false`, 48h auto-confirm, penalty defaults,
@@ -72,6 +81,31 @@ bundle compiles (runtime still needs Supabase credentials).
 - `public/seed/` — generated local SVG artwork (avatars, categories, logos,
   banners, proofs). Placeholders by declaration, never hotlinks.
 - Docs: `GO_LIVE.md`, `INTEGRATIONS.md`, `PRIVACY.md`, `features.md`.
+
+## Routes (deep-linkable)
+
+| URL | View | Access |
+|---|---|---|
+| `/` | Marketplace home (`#explore` scrolls to the listings grid) | public |
+| `/listing/:id` | Listing detail | public |
+| `/store/:id` | Business storefront | public |
+| `/profile/:username` | Public seller profile | public |
+| `/orders`, `/orders/:id` | Order list / tracker | signed in |
+| `/checkout` | Checkout | signed in |
+| `/messages`, `/messages/:threadId` | Chat | signed in |
+| `/sell` | Create a listing | seller |
+| `/business/register` | Register a business | signed in |
+| `/seller/apply` | Seller application | signed in |
+| `/seller` | Seller portal | seller |
+| `/seller/recycle-bin` | Recycle bin | seller |
+| `/agent` | Delivery agent portal | agent |
+| `/admin`, `/admin/:tab` | Admin console | admin |
+| `/login` | Sign in / sign up | public |
+| any other path | Not-found page | public |
+
+Guests who open a gated URL are sent to `/login?next=<path>` and returned
+there after signing in (Google OAuth included); signed-in users without the
+required role get the 403 page.
 
 ## Key product rules (decided)
 

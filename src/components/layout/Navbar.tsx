@@ -13,7 +13,6 @@ import {
   Plus,
   ShieldCheck,
   ChevronDown,
-  Layers,
   Sparkles,
   LogOut,
 } from 'lucide-react';

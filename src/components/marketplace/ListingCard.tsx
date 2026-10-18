@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ShoppingBag, CheckCircle2, ShieldCheck, MapPin } from 'lucide-react';
+import { ShoppingBag, ShieldCheck, MapPin } from 'lucide-react';
 import { Listing, UserProfile } from '../../types';
 import { formatNaira } from '../../utils/money';
 import { formatHallName } from '../../utils/formatHall';
