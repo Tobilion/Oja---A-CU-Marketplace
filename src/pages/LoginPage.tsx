@@ -125,7 +125,14 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
       // Switch to verify mode to enter the 6-digit code
       setMode('verify');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send OTP. Please try again.');
+      // Use a generic message to avoid user enumeration
+      // Supabase's signInWithOtp with shouldCreateUser: false may error for unknown emails
+      const msg = err?.message?.toLowerCase() || '';
+      if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('429')) {
+        setErrorMsg('Too many requests. Please wait a moment and try again.');
+      } else {
+        setErrorMsg('If this email is registered, a code has been sent.');
+      }
     } finally {
       setIsSubmitting(false);
     }
