@@ -14,10 +14,10 @@ interface AuthContextType {
   isMock: boolean;
   switchUser: (userId: string) => Promise<void>;
   signInWithGoogleSchool: (schoolEmail: string, fullName: string) => Promise<void>;
-  signInWithEmailPassword: (email: string) => Promise<void>;
+  signInWithOtp: (email: string) => Promise<void>;
   signUp: (data: Partial<UserProfile>) => Promise<void>;
   signOut: () => Promise<void>;
-  verifyEmailCode: (code: string) => Promise<boolean>;
+  verifyEmailCode: (code: string, options?: { email?: string; type?: 'signup' | 'email' }) => Promise<boolean>;
   applyForSeller: (bankDetails: BankDetails) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -73,8 +73,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadData();
   };
 
-  const signInWithEmailPassword = async (email: string) => {
-    const user = await repo.signInWithEmailPassword(email);
+  const signInWithOtp = async (email: string) => {
+    const user = await repo.signInWithOtp(email);
     setCurrentUser(user);
     await loadData();
   };
@@ -90,9 +90,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null);
   };
 
-  const verifyEmailCode = async (code: string): Promise<boolean> => {
+  const verifyEmailCode = async (code: string, options?: { email?: string; type?: 'signup' | 'email' }): Promise<boolean> => {
     if (!currentUser) return false;
-    const ok = await repo.verifyEmailCode(currentUser.id, code);
+    const ok = await repo.verifyEmailCode(currentUser.id, code, options);
     if (ok) {
       await loadData();
     }
@@ -125,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isMock: repo.isMock,
         switchUser,
         signInWithGoogleSchool,
-        signInWithEmailPassword,
+        signInWithOtp,
         signUp,
         signOut,
         verifyEmailCode,

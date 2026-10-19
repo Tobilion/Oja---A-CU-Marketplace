@@ -274,6 +274,15 @@ export class SupabaseRepository implements Repository {
     return this.mapPublicProfile(pub);
   }
 
+  async getUserByEmail(email: string): Promise<UserProfile | null> {
+    const cleanEmail = email.trim().toLowerCase();
+    const { data, error } = await this.client.from('profiles').select('*').eq('school_email', cleanEmail).maybeSingle();
+    if (!error && data) return this.mapProfile(data);
+    const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*').eq('school_email', cleanEmail).maybeSingle();
+    if (pubError || !pub) return null;
+    return this.mapPublicProfile(pub);
+  }
+
   async updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
     // B-04: Only permit non-privileged columns in user self-updates.
     // Bank details are the seller's own payout data, so self-update is allowed.
@@ -378,25 +387,31 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
-  async verifyEmailCode(userId: string, code: string): Promise<boolean> {
+  async verifyEmailCode(userId: string, code: string, options?: { email?: string; type?: 'signup' | 'email' }): Promise<boolean> {
     const pending = this.readPendingSignup();
-    // Pending signups have no profile row yet, so the auth email comes from
-    // the stash; otherwise resolve it from the existing profile.
-    let email = pending?.email;
+    // Determine email: use provided email, or pending signup stash, or user profile
+    let email = options?.email;
+    if (!email) {
+      email = pending?.email;
+    }
     if (!email) {
       const user = await this.getUserById(userId);
       if (!user) return false;
       email = user.schoolEmail || user.personalEmail;
     }
+    if (!email) return false;
+    
+    const otpType = options?.type || 'signup';
     const { data, error } = await this.client.auth.verifyOtp({
       email,
       token: code,
-      type: 'signup',
+      type: otpType,
     });
     if (error) return false;
     this.clearPendingSignup();
     this.pendingSignupInFlow = false;
-    if (!pending) return true;
+    // For sign-in OTP (type: 'email'), there's no pending signup to process
+    if (!pending || otpType === 'email') return true;
 
     // First session for this account: write the deferred profile row, now
     // authorized by the freshly verified session.
@@ -429,15 +444,17 @@ export class SupabaseRepository implements Repository {
     return current;
   }
 
-  async signInWithEmailPassword(email: string): Promise<UserProfile> {
-    const { data, error } = await this.client.auth.signInWithPassword({
-      email,
-      password: 'OjaSchoolSecureAuth2026!',
+  async signInWithOtp(email: string): Promise<UserProfile> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@stu.cu.edu.ng') && cleanEmail !== 'tobilobajagun@gmail.com') {
+      throw new Error('Only official Covenant University emails (@stu.cu.edu.ng) are accepted.');
+    }
+    const { error } = await this.client.auth.signInWithOtp({
+      email: cleanEmail,
+      options: { shouldCreateUser: false },
     });
     if (error) throw error;
-    const profile = await this.getUserById(data.user.id);
-    if (!profile) throw new Error('Profile not found.');
-    return profile;
+    return (await this.getUserByEmail(cleanEmail)) || this.buildPendingProfile({ email: cleanEmail } as any);
   }
 
   async signUp(data: Partial<UserProfile>): Promise<UserProfile> {
@@ -445,6 +462,9 @@ export class SupabaseRepository implements Repository {
     if (!cleanEmail.endsWith('@stu.cu.edu.ng') && cleanEmail !== 'tobilobajagun@gmail.com') {
       throw new Error('Covenant University student email must end in @stu.cu.edu.ng');
     }
+    // Generate a random, per-account password that the client never stores or reuses.
+    // The user will sign in via OTP, so this password is never used by the client.
+    const randomPassword = crypto.randomUUID() + crypto.randomUUID();
     const pending: PendingSignup = {
       email: cleanEmail,
       userId: '',
@@ -463,7 +483,7 @@ export class SupabaseRepository implements Repository {
     };
     const { data: authData, error } = await this.client.auth.signUp({
       email: cleanEmail,
-      password: 'OjaSchoolSecureAuth2026!',
+      password: randomPassword,
       options: {
         data: {
           full_name: pending.fullName,

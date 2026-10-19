@@ -34,7 +34,7 @@ export const LoginPage: React.FC = () => {
 };
 
 const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
-  const { signInWithGoogleSchool, signInWithEmailPassword, signUp, verifyEmailCode, isMock } = useAuth();
+  const { signInWithGoogleSchool, signInWithOtp, signUp, verifyEmailCode, isMock } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -72,6 +72,10 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
   const [verificationCode, setVerificationCode] = useState('');
   const [mockDevCode] = useState(IS_DEMO_MODE ? '123456' : '');
 
+  // Track the email and type for OTP verification (signin vs signup)
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpType, setOtpType] = useState<'signup' | 'email'>('signup');
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -100,17 +104,28 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
   const handleSignInEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    if (!personalEmail.trim() && !schoolEmail.trim()) {
+    const email = personalEmail.trim() || schoolEmail.trim();
+    if (!email) {
       setErrorMsg('Please enter your email.');
+      return;
+    }
+    // Validate email format
+    if (!email.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
       return;
     }
     setIsSubmitting(true);
     try {
-      await signInWithEmailPassword(personalEmail.trim() || schoolEmail.trim());
-      showToast('Signed in successfully', 'success');
-      handleAuthenticated();
+      // Send OTP to the email
+      await signInWithOtp(email);
+      showToast('OTP sent to your email', 'info');
+      // Store email and type for verification
+      setOtpEmail(email);
+      setOtpType('email');
+      // Switch to verify mode to enter the 6-digit code
+      setMode('verify');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Sign in failed');
+      setErrorMsg(err.message || 'Failed to send OTP. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -169,6 +184,8 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
       });
 
       // Advance to email verification
+      setOtpEmail(cleanSchool);
+      setOtpType('signup');
       setMode('verify');
       showToast('Account created! Please verify your email with the code we sent.', 'info');
     } catch (err: any) {
@@ -183,7 +200,7 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
     setErrorMsg(null);
     setIsSubmitting(true);
     try {
-      const ok = await verifyEmailCode(verificationCode.trim());
+      const ok = await verifyEmailCode(verificationCode.trim(), { email: otpEmail, type: otpType });
       if (ok) {
         showToast('Email verified! You now have full access.', 'success');
         setMode('success');
@@ -259,28 +276,29 @@ const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-[var(--color-border)]" />
-                <span className="text-[10px] text-[var(--color-text-muted)] font-mono uppercase">Or Email Sign In</span>
+                <span className="text-[10px] text-[var(--color-text-muted)] font-mono uppercase">Or Email OTP Sign In</span>
                 <div className="flex-1 h-px bg-[var(--color-border)]" />
               </div>
 
-              {/* Personal Email Sign In */}
+              {/* Email OTP Sign In */}
               <form onSubmit={handleSignInEmail} className="space-y-3">
                 <div>
-                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Personal or School Email</label>
+                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Email (School or Personal)</label>
                   <input
                     type="email"
-                    value={personalEmail}
+                    value={personalEmail || schoolEmail}
                     onChange={(e) => setPersonalEmail(e.target.value)}
-                    placeholder="you@gmail.com"
+                    placeholder="you@email.com"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
+                    required
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-2.5 border border-[var(--color-border)] hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)] font-semibold rounded-lg"
+                  className="w-full py-2.5 bg-[var(--color-brand-primary)] text-white font-semibold rounded-lg hover:opacity-90 disabled:opacity-50"
                 >
-                  Sign In with Email
+                  {isSubmitting ? 'Sending...' : 'Send OTP'}
                 </button>
               </form>
 
