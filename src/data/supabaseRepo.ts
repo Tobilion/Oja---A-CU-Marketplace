@@ -162,7 +162,8 @@ export class SupabaseRepository implements Repository {
         return null;
       }
       return parsed;
-    } catch {
+    } catch (e) {
+      console.error('[supabaseRepo] readPendingSignup failed', e);
       return null;
     }
   }
@@ -170,17 +171,16 @@ export class SupabaseRepository implements Repository {
   private writePendingSignup(pending: PendingSignup): void {
     try {
       localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify(pending));
-    } catch {
-      // Storage unavailable: verification falls back to rebuilding the
-      // profile from the auth user metadata.
+    } catch (e) {
+      console.error('[supabaseRepo] writePendingSignup failed', e);
     }
   }
 
   private clearPendingSignup(): void {
     try {
       localStorage.removeItem(PENDING_SIGNUP_KEY);
-    } catch {
-      // Nothing to clear when storage is unavailable.
+    } catch (e) {
+      console.error('[supabaseRepo] clearPendingSignup failed', e);
     }
   }
 
@@ -776,7 +776,8 @@ export class SupabaseRepository implements Repository {
     for (const sub of order.subOrders) {
       try {
         await this.advanceOrderStatus(orderId, sub.id, 'disputed', `Dispute opened: ${reason}`);
-      } catch {
+      } catch (e) {
+        console.error('[supabaseRepo] disputeOrder sub-order failed', e);
         // Sub-orders that cannot legally dispute (e.g. terminal) are left alone.
       }
     }

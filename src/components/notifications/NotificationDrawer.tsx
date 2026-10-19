@@ -70,7 +70,13 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               >
                 <div className="flex items-center justify-between font-semibold text-[var(--color-text-main)]">
                   <span>{n.title}</span>
-                  {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--color-brand-primary)]" />}
+                  {!n.read && (
+                    <>
+                      <span className="sr-only">Unread</span>
+                      <span className="w-2 h-2 rounded-full bg-[var(--color-brand-primary)]" />
+                      <span className="w-2 h-2 rounded border-[var(--color-brand-primary)] border-2 ml-1" aria-hidden="true" />
+                    </>
+                  )}
                 </div>
                 <p className="text-[var(--color-text-muted)] mt-1 leading-relaxed">{n.message}</p>
                 <span className="text-[10px] text-neutral-400 font-mono mt-2 block">

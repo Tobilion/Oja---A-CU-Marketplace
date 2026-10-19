@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -17,7 +18,19 @@ import { useSmartBack } from '../routes/useSmartBack';
 export const SellerApplyPage: React.FC = () => {
   const { currentUser, applyForSeller, refreshUser } = useAuth();
   const { showToast } = useNotifications();
-  const handleClose = useSmartBack(paths.home);
+  const navigate = useNavigate();
+  const handleClose = useSmartBack(paths.seller);
+
+  // If already an approved seller or has Business Owner badge, redirect to seller portal
+  useEffect(() => {
+    if (currentUser?.isSellerApproved || currentUser?.badges?.includes('Business Owner')) {
+      navigate(paths.seller, { replace: true });
+    }
+    // If application is pending, show status and disable form
+    if (currentUser?.sellerApplicationStatus === 'pending') {
+      setIsSubmitting(true);
+    }
+  }, [currentUser, navigate]);
 
   const [bankName, setBankName] = useState('Guaranty Trust Bank (GTB)');
   const [accountNumber, setAccountNumber] = useState('');
@@ -72,82 +85,109 @@ export const SellerApplyPage: React.FC = () => {
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
-            <p className="font-semibold text-xs">Seller Verification Notice</p>
-            <p className="text-[11px] opacity-80 mt-1 leading-relaxed">
-              Your request will be considered by administrators. When approved, you will be able to publish listings and payouts for completed orders will be sent to these bank details.
-            </p>
-          </div>
-
-          {errorMsg && (
-            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+          {currentUser?.isSellerApproved || currentUser?.badges?.includes('Business Owner') ? (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200">
+              <div className="flex items-center gap-2 font-semibold text-xs">
+                <ShieldCheck className="w-4 h-4" />
+                <span>Already Approved as Seller</span>
+              </div>
+              <p className="text-[11px] opacity-80 mt-1">
+                You already have seller access. <button onClick={() => navigate(paths.seller)} className="underline hover:opacity-80">Go to Seller Portal</button>
+              </p>
             </div>
+          ) : currentUser?.sellerApplicationStatus === 'pending' ? (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-semibold text-xs">
+                <span className="w-4 h-4 animate-spin">⏳</span>
+                <span>Application Pending Review</span>
+              </div>
+              <p className="text-[11px] opacity-80 mt-1">
+                Your seller application is under review by administrators. You will be notified once a decision is made.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+                <p className="font-semibold text-xs">Seller Verification Notice</p>
+                <p className="text-[11px] opacity-80 mt-1 leading-relaxed">
+                  Your request will be considered by administrators. When approved, you will be able to publish listings and payouts for completed orders will be sent to these bank details.
+                </p>
+              </div>
+
+              {errorMsg && (
+                <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-[var(--color-text-main)] mb-1">Select Bank</label>
+                <select
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs text-[var(--color-text-main)]"
+                  disabled={isSubmitting}
+                >
+                  <option value="Guaranty Trust Bank (GTB)">Guaranty Trust Bank (GTB)</option>
+                  <option value="Access Bank">Access Bank</option>
+                  <option value="Zenith Bank">Zenith Bank</option>
+                  <option value="United Bank for Africa (UBA)">United Bank for Africa (UBA)</option>
+                  <option value="Kuda Microfinance Bank">Kuda Microfinance Bank</option>
+                  <option value="OPay">OPay</option>
+                  <option value="Palmpay">Palmpay</option>
+                  <option value="First Bank of Nigeria">First Bank of Nigeria</option>
+                  <option value="Stanbic IBTC Bank">Stanbic IBTC Bank</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[var(--color-text-main)] mb-1">
+                  Account Number (10 Digits)
+                </label>
+                <input
+                  type="text"
+                  maxLength={10}
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="0123456789"
+                  className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs font-mono font-bold tracking-wider"
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[var(--color-text-main)] mb-1">
+                  Account Name (Must match bank alert)
+                </label>
+                <input
+                  type="text"
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  placeholder="e.g. Jane Doe"
+                  className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-[var(--color-border)]">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="px-4 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold hover:opacity-90 disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit Application'}
+                </button>
+              </div>
+            </>
           )}
-
-          <div>
-            <label className="block font-semibold text-[var(--color-text-main)] mb-1">Select Bank</label>
-            <select
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs text-[var(--color-text-main)]"
-            >
-              <option value="Guaranty Trust Bank (GTB)">Guaranty Trust Bank (GTB)</option>
-              <option value="Access Bank">Access Bank</option>
-              <option value="Zenith Bank">Zenith Bank</option>
-              <option value="United Bank for Africa (UBA)">United Bank for Africa (UBA)</option>
-              <option value="Kuda Microfinance Bank">Kuda Microfinance Bank</option>
-              <option value="OPay">OPay</option>
-              <option value="Palmpay">Palmpay</option>
-              <option value="First Bank of Nigeria">First Bank of Nigeria</option>
-              <option value="Stanbic IBTC Bank">Stanbic IBTC Bank</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block font-semibold text-[var(--color-text-main)] mb-1">
-              Account Number (10 Digits)
-            </label>
-            <input
-              type="text"
-              maxLength={10}
-              value={accountNumber}
-              onChange={(e) => setAccountNumber(e.target.value.replace(/[^0-9]/g, ''))}
-              placeholder="0123456789"
-              className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs font-mono font-bold tracking-wider"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold text-[var(--color-text-main)] mb-1">
-              Account Name (Must match bank alert)
-            </label>
-            <input
-              type="text"
-              value={accountName}
-              onChange={(e) => setAccountName(e.target.value)}
-              placeholder="e.g. Jane Doe"
-              className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
-            />
-          </div>
-
-          <div className="pt-2 flex justify-end gap-2 border-t border-[var(--color-border)]">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold hover:opacity-90 disabled:opacity-50"
-            >
-              {isSubmitting ? 'Submitting...' : 'Submit Application'}
-            </button>
-          </div>
         </form>
       </div>
     </div>

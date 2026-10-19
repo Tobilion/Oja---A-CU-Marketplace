@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import { MarketplaceHome } from '../components/marketplace/MarketplaceHome';
 import { NotFoundPage } from '../pages/NotFoundPage';
@@ -12,9 +12,11 @@ import { ProfilePage } from '../pages/ProfilePage';
 import { StorePage } from '../pages/StorePage';
 import { LoginPage } from '../pages/LoginPage';
 import { RequireAccess } from './guards';
+import { RouteFallback } from '../components/common/RouteFallback';
 import { Category, Hall, Listing, UserProfile } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { paths, routePatterns } from './paths';
+import { ErrorBoundary, LazyErrorBoundary } from '../components/common/ErrorBoundary';
 
 // Secondary flows load on demand so the marketplace entry chunk stays small.
 // Each page is a named export, mapped to the default shape lazy() expects.
@@ -65,131 +67,185 @@ export const AppRoutes: React.FC<AppRoutesProps> = ({
   const navigate = useNavigate();
 
   return (
-    <Routes>
-      <Route
-        path={routePatterns.home}
-        element={
-          <MarketplaceHome
-            listings={listings}
-            categories={categories}
-            halls={halls}
-            allUsers={allUsers}
-            onSelectListing={(listing) => navigate(paths.listing(listing.id))}
-          />
-        }
-      />
-      <Route path={routePatterns.listing} element={<ListingPage />} />
-      <Route path={routePatterns.store} element={<StorePage />} />
-      <Route
-        path={routePatterns.profile}
-        element={<ProfilePage onOpenSellerApply={onOpenSellerApply} />}
-      />
-      <Route
-        path={routePatterns.orders}
-        element={
-          <RequireAccess requirement="signed-in">
-            <OrdersPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.order}
-        element={
-          <RequireAccess requirement="signed-in">
-            <OrderDetailPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.checkout}
-        element={
-          <RequireAccess requirement="signed-in">
-            <CheckoutPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.messages}
-        element={
-          <RequireAccess requirement="signed-in">
-            <MessagesPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.messageThread}
-        element={
-          <RequireAccess requirement="signed-in">
-            <MessagesPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.sell}
-        element={
-          <RequireAccess requirement="seller">
-            <SellPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.registerBusiness}
-        element={
-          <RequireAccess requirement="signed-in">
-            <RegisterBusinessPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.sellerApply}
-        element={
-          <RequireAccess requirement="signed-in">
-            <SellerApplyPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.seller}
-        element={
-          <RequireAccess requirement="seller">
-            <SellerPortalPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.recycleBin}
-        element={
-          <RequireAccess requirement="seller">
-            <RecycleBinPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.agent}
-        element={
-          <RequireAccess requirement="agent">
-            <AgentPortalPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.admin}
-        element={
-          <RequireAccess requirement="admin">
-            <AdminPage />
-          </RequireAccess>
-        }
-      />
-      <Route
-        path={routePatterns.adminTab}
-        element={
-          <RequireAccess requirement="admin">
-            <AdminPage />
-          </RequireAccess>
-        }
-      />
-      <Route path={routePatterns.login} element={<LoginPage />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route
+          path={routePatterns.home}
+          element={
+            <MarketplaceHome
+              listings={listings}
+              categories={categories}
+              halls={halls}
+              allUsers={allUsers}
+              onSelectListing={(listing) => navigate(paths.listing(listing.id))}
+            />
+          }
+        />
+        <Route path={routePatterns.listing} element={<ListingPage />} />
+        <Route path={routePatterns.store} element={<StorePage />} />
+        <Route
+          path={routePatterns.profile}
+          element={<ProfilePage onOpenSellerApply={onOpenSellerApply} />}
+        />
+        <Route
+          path={routePatterns.orders}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <OrdersPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.order}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <OrderDetailPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.checkout}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <CheckoutPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.messages}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <MessagesPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.messageThread}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <MessagesPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.sell}
+          element={
+            <RequireAccess requirement="seller">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <SellPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.registerBusiness}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <RegisterBusinessPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.sellerApply}
+          element={
+            <RequireAccess requirement="signed-in">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <SellerApplyPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.seller}
+          element={
+            <RequireAccess requirement="seller">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <SellerPortalPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.recycleBin}
+          element={
+            <RequireAccess requirement="seller">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <RecycleBinPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.agent}
+          element={
+            <RequireAccess requirement="agent">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <AgentPortalPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.admin}
+          element={
+            <RequireAccess requirement="admin">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <AdminPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route
+          path={routePatterns.adminTab}
+          element={
+            <RequireAccess requirement="admin">
+              <LazyErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  <AdminPage />
+                </Suspense>
+              </LazyErrorBoundary>
+            </RequireAccess>
+          }
+        />
+        <Route path={routePatterns.login} element={<LoginPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </ErrorBoundary>
   );
 };

@@ -14,6 +14,7 @@ import { AppRoutes } from './routes/AppRoutes';
 import { RouteFallback } from './components/common/RouteFallback';
 import { useScrollRestoration } from './hooks/useScrollRestoration';
 import { paths, withNext } from './routes/paths';
+import { safeNext } from './routes/safeNext';
 import { takeAuthNext } from './routes/authReturn';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
@@ -141,18 +142,26 @@ function AppContent() {
   }, []);
 
   // BUG-1: logout from anywhere (Navbar menu, another tab) closes every open
-  // modal and drawer so no signed-in view lingers for a guest, and returns to
-  // the marketplace because the route the guest was on may be protected.
+  // modal and drawer so no signed-in view lingers for a guest.
+  // On protected routes, redirect to login with return path; on public pages, go home.
   useEffect(() => {
     const closeAllOverlays = () => {
       setIsCartOpen(false);
       setIsNotificationsOpen(false);
       setFeedbackContext(null);
-      navigate(paths.home);
+
+      const protectedPrefixes = ['/orders', '/checkout', '/messages', '/sell', '/seller', '/agent', '/admin'];
+      const isProtected = protectedPrefixes.some((p) => location.pathname.startsWith(p));
+      if (isProtected) {
+        const next = safeNext(location.pathname + location.search);
+        navigate(withNext(paths.login, next), { replace: true });
+      } else {
+        navigate(paths.home);
+      }
     };
     window.addEventListener('oja:logout', closeAllOverlays);
     return () => window.removeEventListener('oja:logout', closeAllOverlays);
-  }, [navigate]);
+  }, [navigate, location.pathname, location.search]);
 
   // Google OAuth returns to the Site URL root with the session in the URL
   // hash; LoginPage stashed the guarded deep link before leaving, so finish
