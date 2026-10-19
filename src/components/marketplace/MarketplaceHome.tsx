@@ -12,8 +12,10 @@ import { AvatarRow, OrbitAvatars } from '../landing/OrbitAvatars';
 import { ChatSimulation } from '../landing/ChatSimulation';
 import { Listing, Category, Hall, UserProfile } from '../../types';
 import { FilterOptions, filterAndSearchListings } from '../../utils/search';
-import { Package, Plus, Sparkles } from 'lucide-react';
+import { Package } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useRouteFocus } from '../../components/common/ErrorBoundary';
 
 interface MarketplaceHomeProps {
   listings: Listing[];
@@ -21,8 +23,6 @@ interface MarketplaceHomeProps {
   halls: Hall[];
   allUsers: UserProfile[];
   onSelectListing: (listing: Listing) => void;
-  onOpenCreateListing: () => void;
-  onOpenSellerApply: () => void;
 }
 
 export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
@@ -31,14 +31,14 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
   halls,
   allUsers,
   onSelectListing,
-  onOpenCreateListing,
-  onOpenSellerApply,
 }) => {
   const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterOptions>({
     sortBy: 'newest',
   });
+
+  const mainRef = useRouteFocus();
 
   // Map users for fast seller lookup
   const sellerMap = useMemo(() => {
@@ -73,6 +73,16 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
     setSearchQuery('');
     setFilters({ sortBy: 'newest' });
   };
+
+  const location = useLocation();
+
+  // The Navbar "Explore Market" link targets /#explore; once the home route is
+  // mounted (or the hash changes) scroll the listings grid into view.
+  useEffect(() => {
+    if (location.hash === '#explore') {
+      document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.hash]);
 
   // Hero phone tilt target for the orbit parallax loop.
   const phoneRef = useRef<HTMLDivElement | null>(null);
@@ -166,11 +176,19 @@ export const MarketplaceHome: React.FC<MarketplaceHomeProps> = ({
         </div>
       </section>
 
+      {/* Skip to main content for keyboard/screen-reader users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 z-50 px-4 py-2 bg-[var(--color-brand-primary)] text-white text-xs font-semibold rounded-lg"
+      >
+        Skip to main content
+      </a>
+
       {/* Trust Strip */}
       <TrustStrip />
 
       {/* Main Browse Section */}
-      <main id="explore" className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full space-y-6">
+      <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full space-y-6">
         {/* Compact Filter Bar */}
         <FilterBar
           categories={categories}

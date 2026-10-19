@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { X, Bell, CheckCircle2, Clock, Send, ShieldCheck, ShoppingBag } from 'lucide-react';
+import { X, Bell, Send } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
 import { AppNotification } from '../../types';
 import { useModalEscape } from '../../hooks/useModalEscape';
@@ -12,13 +12,13 @@ import { useModalEscape } from '../../hooks/useModalEscape';
 interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateToOrder?: (orderId: string) => void;
+  onNavigate?: (notification: AppNotification) => void;
 }
 
 export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   isOpen,
   onClose,
-  onNavigateToOrder,
+  onNavigate,
 }) => {
   const { notifications, markAsRead } = useNotifications();
   const modalRef = useModalEscape(isOpen, onClose);
@@ -57,9 +57,9 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                 key={n.id}
                 onClick={() => {
                   if (!n.read) markAsRead(n.id);
-                  if (n.linkId && onNavigateToOrder) {
+                  if (n.linkId && onNavigate) {
                     onClose();
-                    onNavigateToOrder(n.linkId);
+                    onNavigate(n);
                   }
                 }}
                 className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
@@ -70,7 +70,13 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               >
                 <div className="flex items-center justify-between font-semibold text-[var(--color-text-main)]">
                   <span>{n.title}</span>
-                  {!n.read && <span className="w-2 h-2 rounded-full bg-[var(--color-brand-primary)]" />}
+                  {!n.read && (
+                    <>
+                      <span className="sr-only">Unread</span>
+                      <span className="w-2 h-2 rounded-full bg-[var(--color-brand-primary)]" />
+                      <span className="w-2 h-2 rounded border-[var(--color-brand-primary)] border-2 ml-1" aria-hidden="true" />
+                    </>
+                  )}
                 </div>
                 <p className="text-[var(--color-text-muted)] mt-1 leading-relaxed">{n.message}</p>
                 <span className="text-[10px] text-neutral-400 font-mono mt-2 block">

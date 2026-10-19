@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { X, Star, Check } from 'lucide-react';
+import { X, Star } from 'lucide-react';
 import { repo } from '../../data';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';

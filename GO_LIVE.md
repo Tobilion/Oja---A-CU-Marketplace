@@ -13,8 +13,12 @@ is kept only as a fallback):
 1. Push `main` to GitHub. Vercel auto-deploys `main` to production.
 2. Vercel dashboard > the `oja` project: confirm Framework Preset `Vite`,
    Build Command `npm run build`, Output Directory `dist`, Root `./`.
-3. No `vercel.json` rewrite is needed: the app serves a single `index.html`
-   with modal (not route) navigation.
+3. `vercel.json` in the repo root declares the SPA rewrite (`/(.*)` →
+   `/index.html`), so every deep link (e.g. `/listing/abc`, `/orders/ord_101`,
+   `/messages/chat_5`, `/admin/reports`) loads the app shell and the in-app
+   router resolves it. Unknown paths render the in-app 404 page (still HTTP
+   200). Vercel applies the rewrite automatically; no dashboard change
+   needed.
 4. Environment: leave `VITE_APP_MODE` unset (demo is the default) or set it
    to `demo`. Do NOT set Supabase variables yet.
 
@@ -55,16 +59,23 @@ You do by hand:
    sends (`supabaseRepo.signInWithGoogleSchool`) is UX only and is never
    trusted.
 5. Auth > Providers > Google: add the Google OAuth client ID/secret (Google
-   Cloud Console credentials for the project). Set the Supabase Site URL to
-   the Netlify URL (Auth > URL Configuration), and add redirect URLs for the
-   Netlify domain and `http://localhost:3000` for local testing.
+   Cloud Console credentials for the project). Then Auth > URL Configuration:
+   - Site URL: the production domain, `https://<vercel-domain>` (OAuth always
+     returns to this root; the client sends no `redirectTo`).
+   - Redirect URLs allow-list: `https://<vercel-domain>/**` and
+     `http://localhost:3000/**` for local testing (add the bare origins too in
+     case exact-match rules apply); trailing-slash mismatches are the usual
+     failure.
+   The route a visitor was heading to before OAuth is stashed in
+   sessionStorage and restored once the session lands, so deep links survive
+   the Google round trip.
 6. Storage: create a bucket for listing photos (the client uploads there in
    Supabase mode; mock mode uses compressed data URLs). Wire the bucket name
    into the listing photo flow before admitting sellers.
 7. Email: Project Settings > Auth > SMTP: Gmail `smtp.gmail.com:587` with an
    app password (daily sending limits apply, see INTEGRATIONS.md), so the
    6-digit personal-email codes actually arrive.
-8. Netlify environment: `VITE_APP_MODE=public`, `VITE_SUPABASE_URL`,
+8. Vercel environment: `VITE_APP_MODE=public`, `VITE_SUPABASE_URL`,
    `VITE_SUPABASE_ANON_KEY`. Redeploy. Without the Supabase variables the
    app halts on the Database Configuration error screen by design; it never
    silently falls back to mock data.

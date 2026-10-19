@@ -72,6 +72,8 @@ export interface Repository {
   switchUser(userId: string): Promise<UserProfile | null>;
   getUsers(): Promise<UserProfile[]>;
   getUserById(id: string): Promise<UserProfile | null>;
+  getUserByUsername(username: string): Promise<UserProfile | null>;
+  getUserByEmail(email: string): Promise<UserProfile | null>;
   updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile>;
   /**
    * H-03: privileged user administration. Enforced in the mock repo, in the
@@ -81,9 +83,9 @@ export interface Repository {
    */
   adminUpdateUser(actorId: string, targetId: string, updates: AdminUserUpdates): Promise<UserProfile>;
   applyForSeller(userId: string, bankDetails: BankDetails): Promise<void>;
-  verifyEmailCode(userId: string, code: string): Promise<boolean>;
+  verifyEmailCode(userId: string, code: string, options?: { email?: string; type?: 'signup' | 'email' }): Promise<boolean>;
   signInWithGoogleSchool(schoolEmail: string, fullName: string): Promise<UserProfile>;
-  signInWithEmailPassword(email: string): Promise<UserProfile>;
+  signInWithOtp(email: string): Promise<UserProfile>;
   signUp(data: Partial<UserProfile>): Promise<UserProfile>;
   signOut(): Promise<void>;
 
@@ -124,6 +126,7 @@ export interface Repository {
   completeDeliveryWithCode(orderId: string, subOrderId: string, code: string, actorId?: string): Promise<boolean>;
   confirmBuyerReceipt(orderId: string, subOrderId: string): Promise<Order>;
   getOrdersForUser(userId: string): Promise<Order[]>;
+  getOrderById(orderId: string): Promise<Order | null>;
   getAllOrders(): Promise<Order[]>;
   getAvailableDeliveries(agentId: string): Promise<AvailableDelivery[]>;
   markSellerPayoutPaid(subOrderId: string): Promise<void>;
@@ -145,6 +148,7 @@ export interface Repository {
 
   // Chat
   getThreadsForUser(userId: string): Promise<ChatThread[]>;
+  getThreadById(threadId: string): Promise<ChatThread | null>;
   ensureThread(userIdA: string, userIdB: string): Promise<ChatThread>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
   sendMessage(msg: Omit<ChatMessage, 'id' | 'createdAt'>): Promise<ChatMessage>;

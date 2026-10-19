@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   X,
   ShieldCheck,
@@ -12,38 +13,121 @@ import {
   MapPin,
   Send,
   Star,
-  Award,
   Edit3,
-  Check,
 } from 'lucide-react';
-import { UserProfile, Listing, Hall, Gender } from '../../types';
-import { ListingCard } from '../marketplace/ListingCard';
-import { formatHallName } from '../../utils/formatHall';
-import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import { UserProfile, Listing, Hall, Gender } from '../types';
+import { ListingCard } from '../components/marketplace/ListingCard';
+import { formatHallName } from '../utils/formatHall';
+import { isValidNigerianPhone, normalizeNigerianPhone } from '../utils/phone';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { RouteFallback } from '../components/common/RouteFallback';
+import { paths, withNext } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface ProfileModalProps {
-  user: UserProfile;
-  listings: Listing[];
-  onClose: () => void;
-  onOpenChatWith: (userId: string) => void;
-  onSelectListing: (listing: Listing) => void;
+interface ProfilePageProps {
+  // Temporary wiring while the seller-application form is still an overlay
+  // in App.tsx; it becomes a route in a later phase.
   onOpenSellerApply: () => void;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({
+export const ProfilePage: React.FC<ProfilePageProps> = ({ onOpenSellerApply }) => {
+  const { username } = useParams<{ username: string }>();
+  const { currentUser } = useAuth();
+  const [fetchedUser, setFetchedUser] = useState<UserProfile | null>(null);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing'>('loading');
+  const isOwnProfile = currentUser?.username === username;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+
+    (async () => {
+      const [found, all] = await Promise.all([
+        username ? repo.getUserByUsername(username) : Promise.resolve(null),
+        repo.getListings(false),
+      ]);
+      if (cancelled) return;
+      setFetchedUser(found);
+      setListings(all);
+      setLoadState(found ? 'ready' : 'missing');
+    })().catch((e) => {
+      console.error('Failed to load profile', e);
+      if (!cancelled) setLoadState('missing');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
+
+  // While viewing your own profile, prefer the live session user so edits
+  // (bio, hall, phone) appear immediately after saving.
+  const profileUser = fetchedUser || (isOwnProfile ? currentUser : null);
+
+  if (loadState === 'loading') {
+    return <RouteFallback />;
+  }
+
+  if (!profileUser) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="font-mono text-xs tracking-widest uppercase text-[var(--color-text-muted)]">
+          Profile unavailable
+        </p>
+        <h1 className="font-display font-extrabold text-2xl text-[var(--color-text-main)]">
+          No student found with @{username}.
+        </h1>
+        <p className="text-sm text-[var(--color-text-muted)] max-w-md">
+          The username may be mistyped, or the account may have been removed.
+        </p>
+        <Link
+          to={paths.home}
+          className="px-4 py-2 rounded-xl bg-[var(--color-brand-primary)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+        >
+          Browse the marketplace
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <ProfileContent
+      user={profileUser}
+      listings={listings}
+      onOpenSellerApply={onOpenSellerApply}
+    />
+  );
+};
+
+interface ProfileContentProps {
+  user: UserProfile;
+  listings: Listing[];
+  onOpenSellerApply: () => void;
+}
+
+const ProfileContent: React.FC<ProfileContentProps> = ({
   user,
   listings,
-  onClose,
-  onOpenChatWith,
-  onSelectListing,
   onOpenSellerApply,
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser, updateProfile } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.home);
+
+  // Chat is account-gated: guests are sent through /login and returned here.
+  const handleOpenChatWith = async (targetUserId: string) => {
+    if (!currentUser) {
+      navigate(withNext(paths.login, location.pathname));
+      return;
+    }
+    const thread = await repo.ensureThread(currentUser.id, targetUserId);
+    navigate(paths.messageThread(thread.id));
+  };
 
   const isSelf = currentUser?.id === user.id;
   const userListings = listings.filter((l) => l.sellerId === user.id && l.status === 'active');
@@ -57,7 +141,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [gender, setGender] = useState<Gender>(user.gender);
   const [hallsList, setHallsList] = useState<Hall[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const modalRef = useModalEscape(true, onClose);
 
   // Halls change every semester, so residence is editable here (this modal
   // doubles as the account settings surface). Loaded lazily on edit.
@@ -108,18 +191,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative mx-auto w-full max-w-2xl bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <span className="text-xs font-mono font-bold text-[var(--color-text-muted)]">@{user.username}</span>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600" aria-label="Close profile">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto p-6 space-y-6 text-xs">
+        <div className="p-6 space-y-6 text-xs">
           {/* Instagram-Style Profile Header */}
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
             <img
@@ -147,7 +230,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   {!isSelf ? (
                     <>
                       <button
-                        onClick={() => onOpenChatWith(user.id)}
+                        onClick={() => handleOpenChatWith(user.id)}
                         className="px-4 py-1.5 rounded-lg bg-[var(--color-brand-primary)] text-white font-semibold flex items-center gap-1.5 hover:opacity-90"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
@@ -337,7 +420,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     key={item.id}
                     listing={item}
                     seller={user}
-                    onClick={() => onSelectListing(item)}
+                    onClick={() => navigate(paths.listing(item.id))}
                   />
                 ))}
               </div>

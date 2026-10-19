@@ -162,7 +162,8 @@ export class SupabaseRepository implements Repository {
         return null;
       }
       return parsed;
-    } catch {
+    } catch (e) {
+      console.error('[supabaseRepo] readPendingSignup failed', e);
       return null;
     }
   }
@@ -170,17 +171,16 @@ export class SupabaseRepository implements Repository {
   private writePendingSignup(pending: PendingSignup): void {
     try {
       localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify(pending));
-    } catch {
-      // Storage unavailable: verification falls back to rebuilding the
-      // profile from the auth user metadata.
+    } catch (e) {
+      console.error('[supabaseRepo] writePendingSignup failed', e);
     }
   }
 
   private clearPendingSignup(): void {
     try {
       localStorage.removeItem(PENDING_SIGNUP_KEY);
-    } catch {
-      // Nothing to clear when storage is unavailable.
+    } catch (e) {
+      console.error('[supabaseRepo] clearPendingSignup failed', e);
     }
   }
 
@@ -260,6 +260,25 @@ export class SupabaseRepository implements Repository {
     // M-02: fall back to the public view when the caller may not read the
     // private row (e.g. a shopper opening a seller storefront).
     const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*').eq('id', id).single();
+    if (pubError || !pub) return null;
+    return this.mapPublicProfile(pub);
+  }
+
+  async getUserByUsername(username: string): Promise<UserProfile | null> {
+    // Profile links resolve by username; mirrors getUserById's fallback so a
+    // visitor can open any profile through the public view under RLS.
+    const { data, error } = await this.client.from('profiles').select('*').eq('username', username).maybeSingle();
+    if (!error && data) return this.mapProfile(data);
+    const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*').eq('username', username).maybeSingle();
+    if (pubError || !pub) return null;
+    return this.mapPublicProfile(pub);
+  }
+
+  async getUserByEmail(email: string): Promise<UserProfile | null> {
+    const cleanEmail = email.trim().toLowerCase();
+    const { data, error } = await this.client.from('profiles').select('*').eq('school_email', cleanEmail).maybeSingle();
+    if (!error && data) return this.mapProfile(data);
+    const { data: pub, error: pubError } = await this.client.from('public_profiles').select('*').eq('school_email', cleanEmail).maybeSingle();
     if (pubError || !pub) return null;
     return this.mapPublicProfile(pub);
   }
@@ -368,25 +387,31 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
-  async verifyEmailCode(userId: string, code: string): Promise<boolean> {
+  async verifyEmailCode(userId: string, code: string, options?: { email?: string; type?: 'signup' | 'email' }): Promise<boolean> {
     const pending = this.readPendingSignup();
-    // Pending signups have no profile row yet, so the auth email comes from
-    // the stash; otherwise resolve it from the existing profile.
-    let email = pending?.email;
+    // Determine email: use provided email, or pending signup stash, or user profile
+    let email = options?.email;
+    if (!email) {
+      email = pending?.email;
+    }
     if (!email) {
       const user = await this.getUserById(userId);
       if (!user) return false;
       email = user.schoolEmail || user.personalEmail;
     }
+    if (!email) return false;
+    
+    const otpType = options?.type || 'signup';
     const { data, error } = await this.client.auth.verifyOtp({
       email,
       token: code,
-      type: 'signup',
+      type: otpType,
     });
     if (error) return false;
     this.clearPendingSignup();
     this.pendingSignupInFlow = false;
-    if (!pending) return true;
+    // For sign-in OTP (type: 'email'), there's no pending signup to process
+    if (!pending || otpType === 'email') return true;
 
     // First session for this account: write the deferred profile row, now
     // authorized by the freshly verified session.
@@ -419,15 +444,17 @@ export class SupabaseRepository implements Repository {
     return current;
   }
 
-  async signInWithEmailPassword(email: string): Promise<UserProfile> {
-    const { data, error } = await this.client.auth.signInWithPassword({
-      email,
-      password: 'OjaSchoolSecureAuth2026!',
+  async signInWithOtp(email: string): Promise<UserProfile> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@stu.cu.edu.ng') && cleanEmail !== 'tobilobajagun@gmail.com') {
+      throw new Error('Only official Covenant University emails (@stu.cu.edu.ng) are accepted.');
+    }
+    const { error } = await this.client.auth.signInWithOtp({
+      email: cleanEmail,
+      options: { shouldCreateUser: false },
     });
     if (error) throw error;
-    const profile = await this.getUserById(data.user.id);
-    if (!profile) throw new Error('Profile not found.');
-    return profile;
+    return (await this.getUserByEmail(cleanEmail)) || this.buildPendingProfile({ email: cleanEmail } as any);
   }
 
   async signUp(data: Partial<UserProfile>): Promise<UserProfile> {
@@ -435,6 +462,9 @@ export class SupabaseRepository implements Repository {
     if (!cleanEmail.endsWith('@stu.cu.edu.ng') && cleanEmail !== 'tobilobajagun@gmail.com') {
       throw new Error('Covenant University student email must end in @stu.cu.edu.ng');
     }
+    // Generate a random, per-account password that the client never stores or reuses.
+    // The user will sign in via OTP, so this password is never used by the client.
+    const randomPassword = crypto.randomUUID() + crypto.randomUUID();
     const pending: PendingSignup = {
       email: cleanEmail,
       userId: '',
@@ -453,7 +483,7 @@ export class SupabaseRepository implements Repository {
     };
     const { data: authData, error } = await this.client.auth.signUp({
       email: cleanEmail,
-      password: 'OjaSchoolSecureAuth2026!',
+      password: randomPassword,
       options: {
         data: {
           full_name: pending.fullName,
@@ -746,7 +776,8 @@ export class SupabaseRepository implements Repository {
     for (const sub of order.subOrders) {
       try {
         await this.advanceOrderStatus(orderId, sub.id, 'disputed', `Dispute opened: ${reason}`);
-      } catch {
+      } catch (e) {
+        console.error('[supabaseRepo] disputeOrder sub-order failed', e);
         // Sub-orders that cannot legally dispute (e.g. terminal) are left alone.
       }
     }
@@ -884,6 +915,17 @@ export class SupabaseRepository implements Repository {
     return fullOrders;
   }
 
+  async getOrderById(orderId: string): Promise<Order | null> {
+    // Orders are readable by the buyer only (RLS orders_buyer_read). The
+    // sub_orders policy also admits participants and admins, but the parent
+    // order row is required to assemble a full order, so in public mode this
+    // returns null for sellers, agents, and admins who are not the buyer.
+    // Deep links to /orders/:id are therefore currently scoped to the buyer
+    // (a broader read policy is a deliberate future schema decision, not a
+    // client fix). Demo mode has no such limit.
+    return this.fetchFullOrder(orderId);
+  }
+
   async getAllOrders(): Promise<Order[]> {
     const { data: orders, error } = await this.client.from('orders').select('id').order('created_at', { ascending: false });
     if (error) throw error;
@@ -999,6 +1041,12 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from('chat_threads').select('*').contains('participant_ids', [userId]);
     if (error) throw error;
     return (data || []).map(this.mapThread);
+  }
+
+  async getThreadById(threadId: string): Promise<ChatThread | null> {
+    const { data, error } = await this.client.from('chat_threads').select('*').eq('id', threadId).maybeSingle();
+    if (error || !data) return null;
+    return this.mapThread(data);
   }
 
   // Direction-free 1:1 thread: both sides converge on thread_<min>_<max>.

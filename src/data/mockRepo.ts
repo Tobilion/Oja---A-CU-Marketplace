@@ -66,6 +66,17 @@ export class MockRepository implements Repository {
     return users.find((u) => u.id === id) || null;
   }
 
+  async getUserByUsername(username: string): Promise<UserProfile | null> {
+    const users = MockStorage.getUsers();
+    return users.find((u) => u.username === username) || null;
+  }
+
+  async getUserByEmail(email: string): Promise<UserProfile | null> {
+    const normalized = email.trim().toLowerCase();
+    const users = MockStorage.getUsers();
+    return users.find((u) => u.schoolEmail.toLowerCase() === normalized || u.personalEmail.toLowerCase() === normalized) || null;
+  }
+
   async updateUserProfile(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
     const users = MockStorage.getUsers();
     const idx = users.findIndex((u) => u.id === id);
@@ -214,7 +225,7 @@ export class MockRepository implements Repository {
     });
   }
 
-  async verifyEmailCode(userId: string, code: string): Promise<boolean> {
+  async verifyEmailCode(userId: string, code: string, options?: { email?: string; type?: 'signup' | 'email' }): Promise<boolean> {
     // In mock mode, any 6-digit code or "123456" succeeds. Verification never
     // grants admin rights: demo signups always stay non-admin (the founding
     // Super admins already exist as seeded personas; real bootstrap happens
@@ -270,14 +281,15 @@ export class MockRepository implements Repository {
     return existing;
   }
 
-  async signInWithEmailPassword(email: string): Promise<UserProfile> {
+  async signInWithOtp(email: string): Promise<UserProfile> {
     const normalized = email.trim().toLowerCase();
     const users = MockStorage.getUsers();
     let existing = users.find((u) => u.personalEmail.toLowerCase() === normalized || u.schoolEmail.toLowerCase() === normalized);
     if (!existing) {
       throw new Error('Account not found with this email. Please sign up first.');
     }
-    MockStorage.setCurrentUserId(existing.id);
+    // In demo mode, OTP is always "123456" - verification happens in verifyEmailCode
+    // This method just initiates the OTP flow
     return existing;
   }
 
@@ -1251,6 +1263,10 @@ export class MockRepository implements Repository {
     );
   }
 
+  async getOrderById(orderId: string): Promise<Order | null> {
+    return MockStorage.getOrders().find((o) => o.id === orderId) || null;
+  }
+
   async getAllOrders(): Promise<Order[]> {
     return MockStorage.getOrders();
   }
@@ -1445,6 +1461,10 @@ export class MockRepository implements Repository {
   async getThreadsForUser(userId: string): Promise<ChatThread[]> {
     const threads = MockStorage.getThreads();
     return threads.filter((t) => t.participantIds.includes(userId));
+  }
+
+  async getThreadById(threadId: string): Promise<ChatThread | null> {
+    return MockStorage.getThreads().find((t) => t.id === threadId) || null;
   }
 
   // Finds the 1:1 thread for a pair (either direction) or creates and

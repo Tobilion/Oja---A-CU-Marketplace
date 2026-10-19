@@ -3,38 +3,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { X, Building, Upload, AlertCircle } from 'lucide-react';
-import { Category } from '../../types';
-import { useAuth } from '../../context/AuthContext';
-import { repo } from '../../data';
-import { useNotifications } from '../../context/NotificationContext';
-import { useModalEscape } from '../../hooks/useModalEscape';
+import React, { useEffect, useState } from 'react';
+import { X, Building, AlertCircle } from 'lucide-react';
+import { Category } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { repo } from '../data';
+import { useNotifications } from '../context/NotificationContext';
+import { requestMarketplaceRefresh } from '../utils/marketplaceRefresh';
+import { paths } from '../routes/paths';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface CreateBusinessModalProps {
-  categories: Category[];
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
-  categories,
-  onClose,
-  onCreated,
-}) => {
+/**
+ * Campus business registration as a route, same form as the modal it
+ * replaces; the category list is fetched here instead of via prop.
+ */
+export const RegisterBusinessPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { showToast } = useNotifications();
+  const handleClose = useSmartBack(paths.home);
 
+  const [categories, setCategories] = useState<Category[]>([]);
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
   const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState(categories[0]?.id || 'cat_electronics');
+  const [categoryId, setCategoryId] = useState('');
   const [contact, setContact] = useState('');
   const [membersPostFreely, setMembersPostFreely] = useState(true);
   const [proofUrl, setProofUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const modalRef = useModalEscape(true, onClose);
+
+  useEffect(() => {
+    repo.getCategories().then(setCategories).catch(() => setCategories([]));
+  }, []);
+
+  // Categories arrive asynchronously; preselect one once they load.
+  useEffect(() => {
+    if (!categoryId && categories.length > 0) {
+      setCategoryId(categories[0].id);
+    }
+  }, [categories, categoryId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +56,10 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
     }
     if (!cleanHandle) {
       setErrorMsg('Please specify a valid @handle for your shop.');
+      return;
+    }
+    if (categories.length === 0 || !categories.some((c) => c.id === categoryId)) {
+      setErrorMsg('Category list failed to load. Check your connection and try again.');
       return;
     }
 
@@ -68,8 +80,8 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
       });
 
       showToast(`Business "@${cleanHandle}" submitted for admin review!`, 'success');
-      onCreated();
-      onClose();
+      requestMarketplaceRefresh();
+      handleClose();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to register business');
     } finally {
@@ -78,15 +90,15 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
   };
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="relative w-full max-w-lg mx-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Building className="w-5 h-5 text-[var(--color-brand-primary)]" />
             <h2 className="text-base font-bold text-[var(--color-text-main)]">Register Campus Business</h2>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleClose} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -200,7 +212,7 @@ export const CreateBusinessModal: React.FC<CreateBusinessModalProps> = ({
           <div className="pt-2 flex justify-end gap-2 border-t border-[var(--color-border)]">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-subtle)]"
             >
               Cancel

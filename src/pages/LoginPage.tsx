@@ -3,24 +3,54 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
-import { X, Lock, Mail, ShieldCheck, AlertCircle, Key, Check } from 'lucide-react';
-import { Hall, Gender } from '../../types';
-import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationContext';
-import { IS_DEMO_MODE } from '../../config/appConfig';
-import { isValidNigerianPhone, normalizeNigerianPhone } from '../../utils/phone';
-import { useModalEscape } from '../../hooks/useModalEscape';
-import { OtpInput } from './OtpInput';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { X, ShieldCheck, AlertCircle, Key, Check } from 'lucide-react';
+import { Hall, Gender } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
+import { IS_DEMO_MODE } from '../config/appConfig';
+import { isValidNigerianPhone, normalizeNigerianPhone } from '../utils/phone';
+import { repo } from '../data';
+import { OtpInput } from '../components/auth/OtpInput';
+import { paths } from '../routes/paths';
+import { safeNext } from '../routes/safeNext';
+import { stashAuthNext, clearAuthNext } from '../routes/authReturn';
+import { useSmartBack } from '../routes/useSmartBack';
 
-interface AuthModalProps {
-  halls: Hall[];
-  onClose: () => void;
-}
+/**
+ * Sign-in / sign-up / verification as a route. The card is the same form
+ * that used to be a global modal; after success it returns to the path the
+ * guard captured in ?next= (guests bounced away from a protected page).
+ */
+export const LoginPage: React.FC = () => {
+  const [halls, setHalls] = useState<Hall[]>([]);
 
-export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
-  const { signInWithGoogleSchool, signInWithEmailPassword, signUp, verifyEmailCode, isMock } = useAuth();
+  useEffect(() => {
+    repo.getHalls().then(setHalls).catch(() => setHalls([]));
+  }, []);
+
+  return <AuthForm halls={halls} />;
+};
+
+const AuthForm: React.FC<{ halls: Hall[] }> = ({ halls }) => {
+  const { signInWithGoogleSchool, signInWithOtp, signUp, verifyEmailCode, isMock } = useAuth();
   const { showToast } = useNotifications();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const rawNext = searchParams.get('next');
+  const nextPath = rawNext ? safeNext(rawNext) : null;
+
+  const handleCancel = useSmartBack(paths.home);
+  const handleAuthenticated = useCallback(() => {
+    clearAuthNext();
+    if (nextPath) {
+      navigate(nextPath, { replace: true });
+      return;
+    }
+    handleCancel();
+  }, [nextPath, navigate, handleCancel]);
 
   const [mode, setMode] = useState<'signin' | 'signup' | 'verify' | 'success'>('signin');
   const [schoolEmail, setSchoolEmail] = useState('');
@@ -42,9 +72,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
   const [verificationCode, setVerificationCode] = useState('');
   const [mockDevCode] = useState(IS_DEMO_MODE ? '123456' : '');
 
+  // Track the email and type for OTP verification (signin vs signup)
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpType, setOtpType] = useState<'signup' | 'email'>('signup');
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const modalRef = useModalEscape(true, onClose);
 
   const handleGoogleSchoolSignIn = async () => {
     setErrorMsg(null);
@@ -54,10 +87,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     }
     setIsSubmitting(true);
     try {
+      // OAuth leaves the page entirely; remember the guarded route so the
+      // session-detection effect in App can finish the deep link afterwards.
+      if (nextPath) stashAuthNext(nextPath);
       await signInWithGoogleSchool(schoolEmail.trim(), fullName.trim() || 'CU Student');
       showToast('Signed in with CU School Account', 'success');
-      onClose();
+      handleAuthenticated();
     } catch (err: any) {
+      clearAuthNext();
       setErrorMsg(err.message || 'Google School sign-in failed');
     } finally {
       setIsSubmitting(false);
@@ -67,17 +104,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
   const handleSignInEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    if (!personalEmail.trim() && !schoolEmail.trim()) {
+    const email = personalEmail.trim() || schoolEmail.trim();
+    if (!email) {
       setErrorMsg('Please enter your email.');
+      return;
+    }
+    // Validate email format
+    if (!email.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
       return;
     }
     setIsSubmitting(true);
     try {
-      await signInWithEmailPassword(personalEmail.trim() || schoolEmail.trim());
-      showToast('Signed in successfully', 'success');
-      onClose();
+      // Send OTP to the email
+      await signInWithOtp(email);
+      showToast('OTP sent to your email', 'info');
+      // Store email and type for verification
+      setOtpEmail(email);
+      setOtpType('email');
+      // Switch to verify mode to enter the 6-digit code
+      setMode('verify');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Sign in failed');
+      // Use a generic message to avoid user enumeration
+      // Supabase's signInWithOtp with shouldCreateUser: false may error for unknown emails
+      const msg = err?.message?.toLowerCase() || '';
+      if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('429')) {
+        setErrorMsg('Too many requests. Please wait a moment and try again.');
+      } else {
+        setErrorMsg('If this email is registered, a code has been sent.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -136,6 +191,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
       });
 
       // Advance to email verification
+      setOtpEmail(cleanSchool);
+      setOtpType('signup');
       setMode('verify');
       showToast('Account created! Please verify your email with the code we sent.', 'info');
     } catch (err: any) {
@@ -150,7 +207,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     setErrorMsg(null);
     setIsSubmitting(true);
     try {
-      const ok = await verifyEmailCode(verificationCode.trim());
+      const ok = await verifyEmailCode(verificationCode.trim(), { email: otpEmail, type: otpType });
       if (ok) {
         showToast('Email verified! You now have full access.', 'success');
         setMode('success');
@@ -168,22 +225,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
     }
   };
 
-  // Let the success confirmation breathe briefly before dismissing the modal.
+  // Let the success confirmation breathe briefly before leaving the page.
   useEffect(() => {
     if (mode !== 'success') return;
-    const timer = setTimeout(onClose, 1400);
+    const timer = setTimeout(handleAuthenticated, 1400);
     return () => clearTimeout(timer);
-  }, [mode, onClose]);
+  }, [mode, handleAuthenticated]);
 
   return (
-    <div ref={modalRef} className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="flex items-center justify-center px-3 py-10 sm:px-6">
+      <div className="relative w-full max-w-lg bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 px-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <h2 className="text-base font-bold text-[var(--color-text-main)]">
             {mode === 'signin' ? 'Sign In to Oja' : mode === 'signup' ? 'Create Student Account' : mode === 'success' ? 'Welcome to Oja' : 'Verify Email Code'}
           </h2>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-600">
+          <button onClick={handleCancel} className="p-1 text-neutral-400 hover:text-neutral-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -226,28 +283,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ halls, onClose }) => {
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-[var(--color-border)]" />
-                <span className="text-[10px] text-[var(--color-text-muted)] font-mono uppercase">Or Email Sign In</span>
+                <span className="text-[10px] text-[var(--color-text-muted)] font-mono uppercase">Or Email OTP Sign In</span>
                 <div className="flex-1 h-px bg-[var(--color-border)]" />
               </div>
 
-              {/* Personal Email Sign In */}
+              {/* Email OTP Sign In */}
               <form onSubmit={handleSignInEmail} className="space-y-3">
                 <div>
-                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Personal or School Email</label>
+                  <label className="block text-[var(--color-text-muted)] mb-1 font-medium">Email (School or Personal)</label>
                   <input
                     type="email"
-                    value={personalEmail}
+                    value={personalEmail || schoolEmail}
                     onChange={(e) => setPersonalEmail(e.target.value)}
-                    placeholder="you@gmail.com"
+                    placeholder="you@email.com"
                     className="w-full bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-lg p-2.5 text-xs"
+                    required
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-2.5 border border-[var(--color-border)] hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-main)] font-semibold rounded-lg"
+                  className="w-full py-2.5 bg-[var(--color-brand-primary)] text-white font-semibold rounded-lg hover:opacity-90 disabled:opacity-50"
                 >
-                  Sign In with Email
+                  {isSubmitting ? 'Sending...' : 'Send OTP'}
                 </button>
               </form>
 
